@@ -1,0 +1,8 @@
+
+test tb="sa_tb": 
+  verilator --cc {{tb}}.sv --trace-fst --build -CFLAGS -O0 -CFLAGS -fuse-ld=mold --verilate-jobs 8 --trace-threads 8 --hierarchical  --timing --binary --Mdir {{tb}}_obj/
+  cd ./{{tb}}_obj/ && ./V{{tb}}
+
+wave tb="sa_tb":
+  surfer ./{{tb}}_obj/waveform.fst
+
