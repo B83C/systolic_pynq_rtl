@@ -1,6 +1,6 @@
 `timescale 1ns / 1ps
 
-module pe #(
+(* use_dsp = "yes" *) module pe #(
     parameter unsigned DATA_WIDTH_IN  = 8,
     parameter unsigned DATA_WIDTH_OUT = 32
 ) (
