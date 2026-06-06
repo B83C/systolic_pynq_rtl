@@ -5,7 +5,7 @@ module sa_module #(
     parameter unsigned DATA_WIDTH_IN = 8,
     parameter unsigned DATA_WIDTH_OUT = 32,
     parameter unsigned C_S_AXIS_DATA_WIDTH = 64,
-    localparam unsigned C_M_AXIS_DATA_WIDTH = C_S_AXIS_DATA_WIDTH * (DATA_WIDTH_OUT / DATA_WIDTH_IN)
+    parameter unsigned C_M_AXIS_DATA_WIDTH = C_S_AXIS_DATA_WIDTH * (DATA_WIDTH_OUT / DATA_WIDTH_IN)
 ) (
     input wire aclk,
     input wire aresetn,
