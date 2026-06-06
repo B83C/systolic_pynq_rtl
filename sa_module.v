@@ -32,7 +32,23 @@ module sa_module #(
       .DATA_WIDTH_IN(DATA_WIDTH_IN),
       .C_S_AXIS_DATA_WIDTH(C_S_AXIS_DATA_WIDTH)
   ) sa_wrapper (
-      .*
+      .aclk(aclk),
+      .aresetn(aresetn),
+
+      .s_axis_A_tdata (s_axis_A_tdata),
+      .s_axis_A_tvalid(s_axis_A_tvalid),
+      .s_axis_A_tready(s_axis_A_tready),
+      .s_axis_A_tlast (s_axis_A_tlast),
+
+      .s_axis_B_tdata (s_axis_B_tdata),
+      .s_axis_B_tvalid(s_axis_B_tvalid),
+      .s_axis_B_tready(s_axis_B_tready),
+      .s_axis_B_tlast (s_axis_B_tlast),
+
+      .m_axis_tdata (m_axis_tdata),
+      .m_axis_tvalid(m_axis_tvalid),
+      .m_axis_tready(m_axis_tready),
+      .m_axis_tlast (m_axis_tlast)
   );
 
 endmodule
