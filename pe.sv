@@ -10,12 +10,12 @@
     input  [ DATA_WIDTH_IN-1:0] a_in,
     input  [ DATA_WIDTH_IN-1:0] b_in,
     input  [DATA_WIDTH_OUT-1:0] c_in,
-    input                       ignore_cin,
+    // input                       ignore_cin,
     output [DATA_WIDTH_OUT-1:0] partial_sum
 );
 
-  // wire [DATA_WIDTH_OUT-1:0] mac = a_in * b_in + c_in;
-  wire [DATA_WIDTH_OUT-1:0] mac = a_in * b_in + (ignore_cin ? 'd0 : c_in);
+  wire [DATA_WIDTH_OUT-1:0] mac = a_in * b_in + c_in;
+  // wire [DATA_WIDTH_OUT-1:0] mac = a_in * b_in + (ignore_cin ? 'd0 : c_in);
 
   reg  [DATA_WIDTH_OUT-1:0] sum;
   initial sum = 0;

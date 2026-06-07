@@ -13,42 +13,44 @@ module SA #(
     input load_a,
     input load_b,
 
-    input [DATA_WIDTH_IN-1:0] a_col[SIZE],
+    input [DATA_WIDTH_IN-1:0] a_row[SIZE],
     input [DATA_WIDTH_IN-1:0] b_row[SIZE],
     input [DATA_WIDTH_IN-1:0] c_row[SIZE],
 
     output [DATA_WIDTH_OUT-1:0] result_row[SIZE]
 );
-  reg [DATA_WIDTH_IN-1:0] b_inner_loop[SIZE][SIZE];
-  reg [DATA_WIDTH_IN-1:0] a_col_inner[SIZE][SIZE];
+  logic [DATA_WIDTH_IN-1:0] b_inner[SIZE][SIZE];
+  logic [DATA_WIDTH_IN-1:0] a_inner_loop[SIZE][SIZE];
 
-  wire [DATA_WIDTH_OUT-1:0] partial_sum[SIZE + 1][SIZE];
+  logic [DATA_WIDTH_OUT-1:0] partial_sum[SIZE + 1][SIZE];
 
   initial begin
-    b_inner_loop = '{default: '{default: '0}};
+    b_inner = '{default: '{default: '0}};
+    a_inner_loop = '{default: '{default: '0}};
   end
 
   genvar k;
   generate
     for (k = 0; k < SIZE; k = k + 1) begin : gen_assign_ports
       assign partial_sum[0][k] = DATA_WIDTH_OUT'(c_row[k]);
-      // assign partial_sum[0][k] = $signed(c_row[k]);
       assign result_row[k]     = partial_sum[SIZE][k];
     end
   endgenerate
 
   always @(posedge clk, negedge rst_n) begin
     if (!rst_n) begin
-      b_inner_loop <= '{default: '{default: '0}};
-      a_col_inner  <= '{default: '{default: '0}};
-      // for (integer i = 0; i < SIZE; i++) for (integer j = 0; j < SIZE; j++) b_inner_loop[i][j] <= 0;
+      b_inner <= '{default: '{default: '0}};
+      a_inner_loop <= '{default: '{default: '0}};
     end else if (tick) begin
       for (integer i = 0; i < SIZE; i++) begin
-        if (current_row[i] && load_a) begin
-          a_col_inner[i] <= a_col;
+        if (current_row[i] && load_b) begin
+          b_inner[i] <= b_row;
         end
         for (integer j = 0; j < SIZE; j++) begin
-          b_inner_loop[i][j+1>=SIZE?0 : j+1] <= (current_row[i] && load_b) ? b_row[j] : b_inner_loop[i][j];
+          a_inner_loop[i][(j+1)%SIZE] <= a_inner_loop[i][j];
+        end
+        if (load_a) begin
+          a_inner_loop[i][0] <= a_row[i];
         end
       end
     end
@@ -58,18 +60,17 @@ module SA #(
   generate
     for (i = 0; i < SIZE; i = i + 1) begin : gen_row
       for (j = 0; j < SIZE; j = j + 1) begin : gen_col
-        wire [DATA_WIDTH_IN-1:0] b = (current_row[i] && load_b) ? b_row[j] : b_inner_loop[i][j];
-        wire [DATA_WIDTH_IN-1:0] a = (current_row[i] && load_a) ? a_col[j] : a_col_inner[i][j];
+        wire [DATA_WIDTH_IN-1:0] b = (current_row[i] && load_b) ? b_row[j] : b_inner[i][j];
+        wire [DATA_WIDTH_IN-1:0] a = (i == 0 && load_a) ? a_row[i] : a_inner_loop[i][(i-1)%SIZE];
 
         pe #(
             .DATA_WIDTH_IN (DATA_WIDTH_IN),
             .DATA_WIDTH_OUT(DATA_WIDTH_OUT)
         ) pe_unit (
-            .clk(clk),
+            .clk  (clk),
             .rst_n(rst_n),
-            .tick(tick),
-            // TODO: add load_a _load_b to allow for long matrix multiplication
-            .ignore_cin(i > 0 ? current_row[i-1] : 0),
+            .tick (tick),
+
             .a_in(a),
             .b_in(b),
             .c_in(partial_sum[i][j]),
