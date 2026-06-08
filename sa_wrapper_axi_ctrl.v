@@ -23,9 +23,9 @@ module sa_wrapper_axi_ctrl #(
 
     // AXI4-Stream: output
     output wire [SIZE*DATA_WIDTH_OUT-1:0] m_axis_tdata,
-    output reg                            m_axis_tvalid,
+    output wire                            m_axis_tvalid,
     input  wire                           m_axis_tready,
-    output reg                            m_axis_tlast,
+    output wire                            m_axis_tlast,
 
     // AXI4-Lite: control / status
     input  wire              s_axil_awvalid,
@@ -35,15 +35,15 @@ module sa_wrapper_axi_ctrl #(
     input  wire              s_axil_wvalid,
     output wire              s_axil_wready,
     output wire [1:0]        s_axil_bresp,
-    output reg               s_axil_bvalid,
+    output wire               s_axil_bvalid,
     input  wire              s_axil_bready,
 
     input  wire              s_axil_arvalid,
     output wire              s_axil_arready,
     input  wire [3:0]        s_axil_araddr,
-    output reg  [31:0]       s_axil_rdata,
+    output wire  [31:0]       s_axil_rdata,
     output wire [1:0]        s_axil_rresp,
-    output reg               s_axil_rvalid,
+    output wire               s_axil_rvalid,
     input  wire              s_axil_rready
 );
 

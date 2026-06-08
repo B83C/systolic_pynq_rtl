@@ -1,3 +1,4 @@
 *_obj/
 *.jou
 *.log
+obj_dir/
