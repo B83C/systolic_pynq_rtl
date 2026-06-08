@@ -390,9 +390,8 @@ module sa_wrapper_axi_ctrl_sv #(
 
   reg [AXI_OUT_WIDTH-1:0] m_axis_tdata_reg;
 
-  // output_available when pipeline is full or draining
-  wire output_available = (beat_cnt >= SIZE) || 
-                          ((state == DRAIN) && !first_drain);
+  // output_available when pipeline is full or during drain (skip first drain cycle)
+  wire output_available = (state == DRAIN) ? !first_drain : (beat_cnt >= SIZE);
 
   generate
     for (gi = 0; gi < SIZE; gi++) begin : gen_pack
