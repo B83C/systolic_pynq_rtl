@@ -14,10 +14,11 @@ module sa_tb;
 
   reg [DWI-1:0] a_row[Size];
   reg [DWI-1:0] b_row[Size];
-  reg [DWI-1:0] c_row[Size];
-  // reg [DWI-1:0] c_row[Sie] = '{default: '0};
+  reg [DWO-1:0] c_row[Size];
 
   wire [DWO-1:0] result_row[Size];
+
+  reg [7:0] loop_len_a = Size;
 
   SA #(
       .SIZE(Size),
@@ -31,6 +32,7 @@ module sa_tb;
       .current_row(load_row),
       .load_a(load_a),
       .load_b(load_b),
+      .loop_len_a(loop_len_a),
       .a_row(a_row),
       .b_row(b_row),
       .c_row(c_row),
@@ -41,7 +43,7 @@ module sa_tb;
   always #1 clk = ~clk;
 
   task load(logic [DWI-1:0] a_r[Size], logic [DWI-1:0] b_r[Size],
-            logic [DWI-1:0] c_r[Size] = '{default: 0});
+            logic [DWO-1:0] c_r[Size] = '{default: 0});
     valid = 1;
     load_row = {load_row[Size-2:0], load_row[Size-1]};
     if (load_row == 0) begin

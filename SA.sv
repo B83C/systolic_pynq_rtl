@@ -2,8 +2,7 @@
 
 module SA #(
     parameter unsigned SIZE           = 8,
-    // parameter unsigned SIZE_W         = 8,
-    // parameter unsigned SIZE_H         = 8,
+    parameter unsigned MAX_LOOP       = 3 * SIZE,
     parameter unsigned DATA_WIDTH_IN  = 8,
     parameter unsigned DATA_WIDTH_OUT = 32
 ) (
@@ -14,6 +13,7 @@ module SA #(
     input [SIZE-1:0] current_row,
     input load_a,
     input load_b,
+    input [7:0] loop_len_a,
 
     input [ DATA_WIDTH_IN-1:0] a_row[SIZE],
     input [ DATA_WIDTH_IN-1:0] b_row[SIZE],
@@ -22,7 +22,7 @@ module SA #(
     output [DATA_WIDTH_OUT-1:0] result_row[SIZE]
 );
   logic [DATA_WIDTH_IN-1:0] b_inner[SIZE][SIZE];
-  logic [DATA_WIDTH_IN-1:0] a_inner_loop[SIZE][SIZE];
+  logic [DATA_WIDTH_IN-1:0] a_inner_loop[SIZE][MAX_LOOP];
 
   logic [DATA_WIDTH_OUT-1:0] partial_sum[SIZE + 1][SIZE];
 
@@ -46,15 +46,14 @@ module SA #(
       for (integer i = 0; i < SIZE; i++) begin
         partial_sum[0][i] <= c_row[i];
 
-        for (integer j = 0; j < SIZE; j++) begin
-          a_inner_loop[i][(j+1)%SIZE] <= a_inner_loop[i][j];
+        a_inner_loop[i][0] <= load_a ? a_row[i] : a_inner_loop[i][loop_len_a - 1];
+
+        for (integer j = 0; j < MAX_LOOP - 1; j++) begin
+          a_inner_loop[i][j + 1] <= a_inner_loop[i][j];
         end
 
         if (current_row[i] && load_b) begin
           b_inner[i] <= b_row;
-        end
-        if (load_a) begin
-          a_inner_loop[i][0] <= a_row[i];
         end
       end
     end
