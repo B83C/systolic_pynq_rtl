@@ -14,7 +14,7 @@ class SystolicArray:
     Adjust DMA names and base address to match your BD.
     """
 
-    def __init__(self, bitstream, ctrl_base_addr=0x43C00000):
+    def __init__(self, bitstream, ctrl_base_addr=0x40000000):
         self.ol = Overlay(bitstream)
         self.mmio = MMIO(ctrl_base_addr, 0x1000)
         self.dma_a = self.ol.axi_dma_0
@@ -128,6 +128,13 @@ class SystolicArray:
         Returns
         -------
         result : ndarray (N, SIZE)  uint32
+
+        Notes
+        -----
+        This loader resets both DMA channels before each transfer so that
+        the method can be called sequentially without a full overlay reload.
+        See ``_mm2s_channel.start()`` / ``_s2mm_channel.start()`` handling
+        in the PYNQ DMA driver.
         """
         n = A.shape[0]
         assert A.shape == B.shape == (n, self.size)
@@ -163,9 +170,6 @@ class SystolicArray:
                 time.sleep(0.001)
             else:
                 raise RuntimeError("DMA timeout")
-            if not ch._flush_before:
-                ch._active_buffer.invalidate()
-            ch._active_buffer = None
         self.wait_done()
 
         # Unpack result

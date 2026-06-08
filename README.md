@@ -95,7 +95,7 @@ the wrapper drains automatically when `tlast` is seen.
 | `DATA_WIDTH_OUT` | 32 | Output element width (bits) |
 | `MAX_LOOP` | 3×SIZE | Internal A recirculation buffer depth |
 
-### Timing (SIZE=4, both streaming, no reuse)
+### Timing (both streaming, no reuse)
 
 | Phase | Cycles | Activity |
 |---|---|---|
@@ -103,6 +103,12 @@ the wrapper drains automatically when `tlast` is seen.
 | Compute | N−1  | A streaming; B frozen |
 | Drain  | SIZE+1 | zeros injected, pipeline flushed |
 | Total  | N + 2×SIZE + 1 | |
+
+**Output beats:** The drain phase produces SIZE+1 valid cycles. The first drain output
+beat is garbage (pipeline not yet flushed). To match the DMA's expected transfer
+length (= N rows), the `output_available` logic skips the first drain beat:
+`output_available = (state == DRAIN) ? !first_drain : (beat_cnt >= SIZE)`.
+This ensures exactly N output beats (N ≤ SIZE).
 
 ## Running
 
@@ -181,19 +187,24 @@ while not (mmio.read(0x00) & 0x2):
 
 ## Deployment workflow (g7-station → PYNQ)
 
-### Quick rebuild & upload (g7-station)
+### Quick batch rebuild & upload (g7-station)
 
 SSH to `g7-station` and:
 
 ```sh
-cd ~/git/systolic && git pull            # pull latest wrapper changes
+cd ~/git/systolic && git pull
 cd ~/vivado/test_systolic
-vivado test_systolic.xpr &               # open project (or use -mode batch)
-
-# In Vivado: Source → right‑click sa_wrapper_axi_ctrl_sv.sv → Refresh
-# Then: Generate Bitstream
-# When done, close Vivado and run:
-cd ~/git/systolic && just upload 3        # copies .bit / .hwh / systolic.py → pynq
+vivado -mode batch -source /dev/stdin <<'EOF'
+open_project test_systolic.xpr
+reset_run synth_1
+reset_run impl_1
+launch_runs synth_1 -jobs 8
+wait_on_run synth_1
+launch_runs impl_1 -to_step write_bitstream -jobs 8
+wait_on_run impl_1
+exit
+EOF
+cd ~/git/systolic && just upload 3
 ```
 
 The `just upload 3` target SCPs:
@@ -247,3 +258,8 @@ Open `http://<pynq-ip>:9090` in a browser, navigate to `sa_test_axis/test_systol
 - The wrapper (`sa_wrapper_axi_ctrl_sv.sv`) is the file to modify for protocol changes
 - Adding self‑checking to a new testbench: unpack `m_axis_tdata` into `result_row[0..SIZE-1]` and compare with expected values computed by tracing the SA's diagonal‑shift‑register behavior
 - For back‑to‑back streaming without reset, BE AWARE that `beat_cnt` does not reset and `load_b` stays low after the first SIZE beats, so new B rows are NOT loaded — the old B matrix persists
+- **`AXI_OUT_WIDTH = SIZE × DATA_WIDTH_OUT` must match the DMA S2MM `c_s_axis_s2mm_tdata_width`** (256 for BD design_3). With SIZE=8 and DATA_WIDTH_OUT=32: 8×32 = 256 ✓.
+- **DMA S2MM internal error 0x5011** typically means TLAST/data length mismatch. The SA must produce exactly as many output beats as the DMA expects. The drain fix (skip first drain beat) ensures this.
+- **Simple DMA (c_include_sg=0):** after each transfer completes, the channel auto-halts. Do not call `channel.wait()` after the transfer finishes — use manual idle-poll of DMASR instead.
+- **PYNQ XRT:** after a DMA error, the device may become unresponsive. Reset with `xbutil reset -d 0 <<< "Y"` before retrying.
+- **`systolic.py` driver parameter defaults must match the Vivado BD configuration.** The BD sets `SIZE=8`; the SV default `SIZE=4` is just a default and is overridden by the BD.
