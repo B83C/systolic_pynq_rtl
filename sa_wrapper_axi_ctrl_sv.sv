@@ -147,6 +147,7 @@ module sa_wrapper_axi_ctrl_sv #(
   reg                a_loading_done_d, b_loading_done_d;
   reg                state_running;
   reg                tlast_seen;  // latched when any consume cycle sees tlast
+  reg                first_drain;
 
   wire both_reuse = mode_reuse_a && mode_reuse_b;
 
@@ -307,6 +308,7 @@ module sa_wrapper_axi_ctrl_sv #(
       b_loading_done_d <= 0;
       state_running  <= 0;
       tlast_seen     <= 0;
+      first_drain    <= 0;
     end else begin
       state <= state_nxt;
 
@@ -356,9 +358,11 @@ module sa_wrapper_axi_ctrl_sv #(
 
       // drain counter
       if (state == DRAIN_HOLD) begin
-        drain_cnt <= SIZE;
+        drain_cnt   <= SIZE + 1;
+        first_drain <= 1;
       end else if (state == DRAIN && drain_active) begin
-        drain_cnt <= drain_cnt - 1;
+        drain_cnt   <= drain_cnt - 1;
+        first_drain <= 0;
       end
 
       // running / done flags
@@ -387,7 +391,8 @@ module sa_wrapper_axi_ctrl_sv #(
   reg [AXI_OUT_WIDTH-1:0] m_axis_tdata_reg;
 
   // output_available when pipeline is full or draining
-  wire output_available = (beat_cnt > SIZE) || (state == DRAIN);
+  wire output_available = (beat_cnt >= SIZE) || 
+                          ((state == DRAIN) && !first_drain);
 
   generate
     for (gi = 0; gi < SIZE; gi++) begin : gen_pack
