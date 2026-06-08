@@ -9,28 +9,14 @@ sa = SystolicArray(
     ctrl_base_addr=0x40000000
 )
 
-n = 4
+n = sa.size
 A = np.ones((n, n), dtype=np.uint8)
 B = np.eye(n, dtype=np.uint8) * 2
 
-wpbi = sa._input_words_per_beat
-wpbo = sa._output_words_per_beat
-
-in_a = allocate(shape=(n * wpbi,), dtype=np.uint32)
-in_b = allocate(shape=(n * wpbi,), dtype=np.uint32)
-out = allocate(shape=(n * wpbo,), dtype=np.uint32)
-
-for i in range(n):
-    col = np.uint32(A[i, 0])
-    for j in range(1, n):
-        col |= np.uint32(A[i, j]) << (8 * j)
-    in_a[i * wpbi:(i+1)*wpbi] = col
-
-for i in range(n):
-    col = np.uint32(B[i, 0])
-    for j in range(1, n):
-        col |= np.uint32(B[i, j]) << (8 * j)
-    in_b[i * wpbi:(i+1)*wpbi] = col
+# Use driver's pack_rows
+in_a = sa.pack_rows(A, sa._input_words_per_beat, 1)
+in_b = sa.pack_rows(B, sa._input_words_per_beat, 1)
+out = allocate(shape=(n * sa._output_words_per_beat,), dtype=np.uint32)
 
 sa.set_mode(False, False)
 sa.set_loop_len(n)
@@ -42,37 +28,36 @@ sa.dma_b.sendchannel.transfer(in_b)
 
 sa.start()
 
-time.sleep(0.05)
-print("send A running:", sa.dma_a.sendchannel.running)
-print("send B running:", sa.dma_b.sendchannel.running)
-print("recv running:", sa.dma_a.recvchannel.running)
-
-try:
-    sa.dma_a.sendchannel.wait()
-    print("sendA done")
-except Exception as e:
-    print("sendA err:", e)
-
-try:
-    sa.dma_b.sendchannel.wait()
-    print("sendB done")
-except Exception as e:
-    print("sendB err:", e)
-
-try:
-    sa.dma_a.recvchannel.wait()
-    print("recv done")
-except Exception as e:
-    print("recv err:", e)
+for ch, name in [(sa.dma_a.sendchannel, "sendA"),
+                  (sa.dma_b.sendchannel, "sendB"),
+                  (sa.dma_a.recvchannel, "recv")]:
+    off = ch._offset
+    for _ in range(500):
+        sr = ch._mmio.read(off + 4)
+        if sr & 0x70:
+            print(f"{name} error sr=0x{sr:x}")
+            break
+        if sr & 2:
+            print(f"{name} done (sr=0x{sr:x})")
+            break
+        time.sleep(0.001)
+    else:
+        print(f"{name} timeout")
 
 sa.wait_done()
 
-result = np.zeros((n, sa.size), dtype=np.uint32)
-for i in range(n):
-    for j in range(sa.size):
-        result[i, j] = out[i * wpbo + j]
+result = sa.unpack_rows(out, n, sa.size, sa._output_words_per_beat)
 print("Result:")
 print(result)
+
+expected = A @ B
+print("Expected (A@B):")
+print(expected)
+
+if np.array_equal(result, expected):
+    print("PASS")
+else:
+    print("FAIL")
 
 in_a.freebuffer()
 in_b.freebuffer()
