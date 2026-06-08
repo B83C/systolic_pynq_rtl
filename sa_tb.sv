@@ -4,7 +4,7 @@ module sa_tb;
   reg clk;
   reg rst_n;
 
-  reg tick;
+  reg valid;
   reg load_a, load_b;
 
   localparam unsigned Size = 4;
@@ -26,7 +26,7 @@ module sa_tb;
   ) sa_top (
       .clk  (clk),
       .rst_n(rst_n),
-      .tick (tick),
+      .valid(valid),
 
       .current_row(load_row),
       .load_a(load_a),
@@ -42,7 +42,7 @@ module sa_tb;
 
   task load(logic [DWI-1:0] a_r[Size], logic [DWI-1:0] b_r[Size],
             logic [DWI-1:0] c_r[Size] = '{default: 0});
-    tick = 1;
+    valid = 1;
     load_row = {load_row[Size-2:0], load_row[Size-1]};
     if (load_row == 0) begin
       load_row = 1;
@@ -50,8 +50,8 @@ module sa_tb;
     a_row = a_r;
     b_row = b_r;
     c_row = c_r;
-    @(negedge clk);
-    tick = 0;
+    @(posedge clk);
+    valid = 0;
   endtask
 
   initial begin
@@ -61,7 +61,7 @@ module sa_tb;
     rst_n = 0;
     repeat (2) @(negedge clk);
     rst_n = 1;
-    repeat (2) @(negedge clk);
+    repeat (2) @(posedge clk);
 
     load_a = 1;
     load_b = 1;

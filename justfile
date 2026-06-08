@@ -4,5 +4,5 @@ test tb="sa_tb":
   cd ./{{tb}}_obj/ && ./V{{tb}}
 
 wave tb="sa_tb":
-  surfer ./{{tb}}_obj/waveform.fst
+  surfer ./{{tb}}_obj/waveform.fst --state {{tb}}_state
 

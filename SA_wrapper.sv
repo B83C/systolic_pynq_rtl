@@ -87,13 +87,12 @@ module SA_wrapper #(
     input_last_delayed  <= input_last;
   end
 
-  logic [DATA_WIDTH_IN-1:0] a_col[SIZE];
+  logic [DATA_WIDTH_IN-1:0] a_row[SIZE];
   logic [DATA_WIDTH_IN-1:0] b_row[SIZE];
   logic [DATA_WIDTH_IN-1:0] c_row_zero[SIZE] = '{default: '0};
   logic [DATA_WIDTH_OUT - 1:0] result_row[SIZE];
 
   wire data_in_flight = (output_row_oh != 0);
-
 
   wire output_valid = (data_in_flight && (input_valid_delayed));
   // wire output_valid = (data_in_flight && (input_valid_delayed || draining));
@@ -187,7 +186,7 @@ module SA_wrapper #(
       .load_a(load_a_delayed),
       .load_b(load_b_delayed),
 
-      .a_col(a_col),
+      .a_row(a_row),
       .b_row(b_row),
       .c_row(c_row_zero),
 
