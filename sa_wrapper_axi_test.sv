@@ -69,6 +69,7 @@ module sa_wrapper_axi_test #(
 
   SA #(
       .SIZE(SIZE),
+      .MAX_LOOP(3 * SIZE),
       .DATA_WIDTH_IN(DATA_WIDTH_IN),
       .DATA_WIDTH_OUT(DATA_WIDTH_OUT)
   ) sa_core (
@@ -78,6 +79,7 @@ module sa_wrapper_axi_test #(
       .current_row(cur_row),
       .load_a(1'b1),
       .load_b(load_b),
+      .loop_len_a(SIZE),
       .a_row(a_row),
       .b_row(b_row),
       .c_row(c_row),

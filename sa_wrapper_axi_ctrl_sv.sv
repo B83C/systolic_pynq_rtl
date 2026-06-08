@@ -282,7 +282,7 @@ module sa_wrapper_axi_ctrl_sv #(
       end
 
       DRAIN: begin
-        if (drain_cnt == 0) state_nxt = DONE_ST;
+        if (drain_cnt == 1) state_nxt = DONE_ST;
       end
 
       DONE_ST: begin
