@@ -179,27 +179,28 @@ while not (mmio.read(0x00) & 0x2):
     pass
 ```
 
-## PYNQ-Z2 Deployment (Vivado flow)
+## Deployment workflow (g7-station → PYNQ)
 
-### Prerequisites
+### Quick rebuild & upload (g7-station)
 
-- Vivado 2025.2 (or compatible)
-- PYNQ-Z2 board with PYNQ v3.1.1 image
-- `ssh` access configured (SSH port 2222 on the board)
-
-### Build bitstream
+SSH to `g7-station` and:
 
 ```sh
-cd build/scripts
-source /path/to/Vivado/2025.2/settings64.sh
-vivado -mode batch -source build.tcl 2>&1 | tee build.log
+cd ~/git/systolic && git pull            # pull latest wrapper changes
+cd ~/vivado/test_systolic
+vivado test_systolic.xpr &               # open project (or use -mode batch)
+
+# In Vivado: Source → right‑click sa_wrapper_axi_ctrl_sv.sv → Refresh
+# Then: Generate Bitstream
+# When done, close Vivado and run:
+cd ~/git/systolic && just upload 3        # copies .bit / .hwh / systolic.py → pynq
 ```
 
-This generates `systolic.bit` and `systolic.hwh` in the project root.
+The `just upload 3` target SCPs:
+- `test_systolic.gen/sources_1/bd/design_3/hw_handoff/design_3.hwh`   → `pynq:~/…/systolic.hwh`
+- `test_systolic.runs/impl_1/design_3_wrapper.bit`                    → `pynq:~/…/systolic.bit`
+- `git/systolic/systolic.py`                                           → `pynq:~/…/systolic.py`
 
-### Deploy to PYNQ
-
-```sh
 ### Power-cycling the PYNQ board
 
 The board is on a networked ESPHome switch at `qswitch_test.local`. Use `curl`:
