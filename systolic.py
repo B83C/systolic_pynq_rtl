@@ -20,12 +20,12 @@ class SystolicArray:
         self.dma_a = self.ol.axi_dma_0
         self.dma_b = self.ol.axi_dma_1
 
-        # Read params from hardware (defaults for SIZE=4, DWI=8, DWO=64)
-        self.size = 4
+        # Read params from hardware (SIZE=8, DWI=8, DWO=32)
+        self.size = 8
         self.dwi = 8
-        self.dwo = 64
-        self._input_words_per_beat = self.size * self.dwi // 32  # 1
-        self._output_words_per_beat = self.size * self.dwo // 32  # 8
+        self.dwo = 32
+        self._input_words_per_beat = self.size * self.dwi // 32    # 2
+        self._output_words_per_beat = self.size * self.dwo // 32   # 8
 
     # -----------------------------------------------------------------
     #  Low-level register access
@@ -94,21 +94,20 @@ class SystolicArray:
                 col = np.uint32(rows[:, i])
                 for j in range(1, min(4, s - i)):
                     col |= np.uint32(rows[:, i + j]) << (8 * j)
-                for k in range(words_per_beat):
-                    beat = i // 4 + k
-                    buf[beat::words_per_beat] = col
+                beat = i // 4          # which uint32 word within the beat
+                buf[beat::words_per_beat] = col
         elif elem_bytes == 4:        # already uint32
             for i in range(s):
                 buf[i::words_per_beat] = np.uint32(rows[:, i])
         return buf
 
     @staticmethod
-    def unpack_rows(buf, n_rows, size, words_per_beat, dtype=np.uint32, stride=1):
+    def unpack_rows(buf, n_rows, size, words_per_beat, dtype=np.uint32):
         """Reverse of pack_rows."""
         out = np.zeros((n_rows, size), dtype=dtype)
         if dtype == np.uint32:
             for i in range(size):
-                out[:, i] = buf[i * stride::words_per_beat]
+                out[:, i] = buf[i::words_per_beat]
         return out
 
     # -----------------------------------------------------------------
@@ -169,9 +168,8 @@ class SystolicArray:
             ch._active_buffer = None
         self.wait_done()
 
-        # Unpack result (stride = self.dwo // 32 compensates for 64-bit elements)
-        result = self.unpack_rows(out, n, self.size, self._output_words_per_beat,
-                                  stride=self.dwo // 32)
+        # Unpack result
+        result = self.unpack_rows(out, n, self.size, self._output_words_per_beat)
         in_a.freebuffer()
         in_b.freebuffer()
         out.freebuffer()
