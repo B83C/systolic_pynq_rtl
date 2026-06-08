@@ -1,5 +1,6 @@
 from pynq import Overlay, allocate, MMIO
 import numpy as np
+import time
 
 
 class SystolicArray:
@@ -19,12 +20,12 @@ class SystolicArray:
         self.dma_a = self.ol.axi_dma_0
         self.dma_b = self.ol.axi_dma_1
 
-        # Read params from hardware (defaults for SIZE=4, DWI=8, DWO=32)
+        # Read params from hardware (defaults for SIZE=4, DWI=8, DWO=64)
         self.size = 4
         self.dwi = 8
-        self.dwo = 32
+        self.dwo = 64
         self._input_words_per_beat = self.size * self.dwi // 32  # 1
-        self._output_words_per_beat = self.size * self.dwo // 32  # 4
+        self._output_words_per_beat = self.size * self.dwo // 32  # 8
 
     # -----------------------------------------------------------------
     #  Low-level register access
@@ -102,12 +103,12 @@ class SystolicArray:
         return buf
 
     @staticmethod
-    def unpack_rows(buf, n_rows, size, words_per_beat, dtype=np.uint32):
+    def unpack_rows(buf, n_rows, size, words_per_beat, dtype=np.uint32, stride=1):
         """Reverse of pack_rows."""
         out = np.zeros((n_rows, size), dtype=dtype)
         if dtype == np.uint32:
             for i in range(size):
-                out[:, i] = buf[i::words_per_beat]
+                out[:, i] = buf[i * stride::words_per_beat]
         return out
 
     # -----------------------------------------------------------------
@@ -143,22 +144,34 @@ class SystolicArray:
         self.set_mode(a_reuse, b_reuse)
         self.set_loop_len(loop_len)
 
-        # Start DMA transfers
+        # Start DMA transfers (recv first so S2MM is ready for SA output)
+        self.dma_a.recvchannel.transfer(out)
         self.dma_a.sendchannel.transfer(in_a)
         self.dma_b.sendchannel.transfer(in_b)
-        self.dma_a.recvchannel.transfer(out)
 
         # Start computation
         self.start()
 
-        # Wait for completion
-        self.dma_a.sendchannel.wait()
-        self.dma_b.sendchannel.wait()
-        self.dma_a.recvchannel.wait()
+        # Wait for DMA completion
+        for ch in [self.dma_a.sendchannel, self.dma_b.sendchannel, self.dma_a.recvchannel]:
+            off = ch._offset
+            for _ in range(500):
+                sr = ch._mmio.read(off + 4)
+                if sr & 0x70:
+                    raise RuntimeError(f"DMA error sr=0x{sr:x}")
+                if sr & 2:
+                    break
+                time.sleep(0.001)
+            else:
+                raise RuntimeError("DMA timeout")
+            if not ch._flush_before:
+                ch._active_buffer.invalidate()
+            ch._active_buffer = None
         self.wait_done()
 
-        # Unpack result
-        result = self.unpack_rows(out, n, self.size, self._output_words_per_beat)
+        # Unpack result (stride = self.dwo // 32 compensates for 64-bit elements)
+        result = self.unpack_rows(out, n, self.size, self._output_words_per_beat,
+                                  stride=self.dwo // 32)
         in_a.freebuffer()
         in_b.freebuffer()
         out.freebuffer()
