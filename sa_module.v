@@ -26,14 +26,13 @@ module sa_module #(
     output wire m_axis_tlast
 );
 
-  SA_wrapper #(
+  sa_wrapper_axi_test #(
       .SIZE(SIZE),
       .DATA_WIDTH_OUT(DATA_WIDTH_OUT),
-      .DATA_WIDTH_IN(DATA_WIDTH_IN),
-      .C_S_AXIS_DATA_WIDTH(C_S_AXIS_DATA_WIDTH)
+      .DATA_WIDTH_IN(DATA_WIDTH_IN)
   ) sa_wrapper (
-      .aclk(aclk),
-      .aresetn(aresetn),
+      .clk(aclk),
+      .rst_n(aresetn),
 
       .s_axis_A_tdata (s_axis_A_tdata),
       .s_axis_A_tvalid(s_axis_A_tvalid),

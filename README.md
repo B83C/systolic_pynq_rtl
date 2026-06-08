@@ -179,6 +179,66 @@ while not (mmio.read(0x00) & 0x2):
     pass
 ```
 
+## PYNQ-Z2 Deployment (Vivado flow)
+
+### Prerequisites
+
+- Vivado 2025.2 (or compatible)
+- PYNQ-Z2 board with PYNQ v3.1.1 image
+- `ssh` access configured (SSH port 2222 on the board)
+
+### Build bitstream
+
+```sh
+cd build/scripts
+source /path/to/Vivado/2025.2/settings64.sh
+vivado -mode batch -source build.tcl 2>&1 | tee build.log
+```
+
+This generates `systolic.bit` and `systolic.hwh` in the project root.
+
+### Deploy to PYNQ
+
+```sh
+### Power-cycling the PYNQ board
+
+The board is on a networked ESPHome switch at `qswitch_test.local`. Use `curl`:
+
+```sh
+# Power off
+curl -s -X POST -H "Content-Type: application/json" -d '{}' \
+  "http://qswitch_test.local/switch/Misc%232/turn_off"
+
+# Wait 8 seconds, then power on
+sleep 8
+curl -s -X POST -H "Content-Type: application/json" -d '{}' \
+  "http://qswitch_test.local/switch/Misc%232/turn_on"
+```
+
+Wait ~80s for the board to fully boot (SSH port 2222).
+
+### Deploy to PYNQ
+
+```sh
+ssh pynq 'echo xilinx | sudo -S mkdir -p /home/xilinx/jupyter_notebooks/sa_test_axis'
+scp systolic.bit systolic.hwh systolic.py test_systolic.ipynb \
+  pynq:/home/xilinx/jupyter_notebooks/sa_test_axis/
+```
+
+### Run on PYNQ (SSH)
+
+```sh
+ssh pynq
+sudo -i
+source /etc/profile.d/pynq_venv.sh
+source /etc/profile.d/xrt_setup.sh
+cd /home/xilinx/jupyter_notebooks/sa_test_axis
+python3 -c "from systolic import SystolicArray; SystolicArray().test_all()"
+```
+
+### Run from Jupyter
+
+Open `http://<pynq-ip>:9090` in a browser, navigate to `sa_test_axis/test_systolic.ipynb`, and run all cells.
 ## Notes for agent use
 
 - The systolic array core is `SA.sv` — the wrapper and BD files are for integration

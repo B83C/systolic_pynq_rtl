@@ -32,23 +32,24 @@ module sa_wrapper_axi_test #(
   reg [ROW_BITS:0] beat_cnt;
   reg [ROW_BITS:0] drain_cnt;
   reg              draining;
-  reg              first_drain;  // suppress first drain sample (SA pipeline is still filling)
+  reg              first_drain;
 
-  // output data register (one-stage pipeline)
   reg [AXI_OUT_WIDTH-1:0] m_axis_tdata_reg;
 
-  // flow control: can accept new output when current one is consumed or not valid
+  reg                    a_full, b_full;
+  reg [AXI_IN_WIDTH-1:0] a_data, b_data;
+  reg                    a_last, b_last;
+
   wire can_output = !m_axis_tvalid || m_axis_tready;
-  wire both_valid = s_axis_A_tvalid && s_axis_B_tvalid;
-  wire consume = both_valid && !draining && can_output;
+
+  assign s_axis_A_tready = !a_full;
+  assign s_axis_B_tready = !b_full;
+
+  wire consume = a_full && b_full && can_output && !draining;
   wire drain_active = draining && (drain_cnt > 0);
   wire drain_valid = drain_active && can_output;
   wire valid = consume || drain_valid;
 
-  assign s_axis_A_tready = both_valid && can_output;
-  assign s_axis_B_tready = both_valid && can_output;
-
-  // combinatorial load_b — active for first SIZE consumptions
   wire load_b = (beat_cnt < SIZE);
 
   wire [DATA_WIDTH_IN-1:0] a_row[SIZE];
@@ -59,12 +60,10 @@ module sa_wrapper_axi_test #(
   genvar gi;
   generate
     for (gi = 0; gi < SIZE; gi++) begin : gen_a_row
-      assign a_row[gi] = drain_active ? '0 :
-                         s_axis_A_tdata[gi*DATA_WIDTH_IN+:DATA_WIDTH_IN];
+      assign a_row[gi] = drain_active ? '0 : a_data[gi*DATA_WIDTH_IN+:DATA_WIDTH_IN];
     end
     for (gi = 0; gi < SIZE; gi++) begin : gen_b_row
-      assign b_row[gi] = drain_active ? '0 :
-                         s_axis_B_tdata[gi*DATA_WIDTH_IN+:DATA_WIDTH_IN];
+      assign b_row[gi] = drain_active ? '0 : b_data[gi*DATA_WIDTH_IN+:DATA_WIDTH_IN];
     end
   endgenerate
 
@@ -85,7 +84,6 @@ module sa_wrapper_axi_test #(
       .result_row(result_row)
   );
 
-  // m_axis_tdata is combinatorial from the output register
   generate
     for (gi = 0; gi < SIZE; gi++) begin : gen_pack
       assign m_axis_tdata[gi*DATA_WIDTH_OUT+:DATA_WIDTH_OUT] =
@@ -93,38 +91,55 @@ module sa_wrapper_axi_test #(
     end
   endgenerate
 
-  // output available when pipeline is full or draining
-  // skip first drain cycle — a_inner_loop diagonal fills one cycle late
-  wire output_available = ((beat_cnt >= SIZE) || drain_active) && !first_drain;
+  wire output_available = drain_active && !first_drain;
 
   always @(posedge clk, negedge rst_n) begin
     if (!rst_n) begin
-      cur_row        <= 1;
-      beat_cnt       <= 0;
-      drain_cnt      <= 0;
-      draining       <= 0;
-      first_drain    <= 1;
+      cur_row          <= 1;
+      beat_cnt         <= 0;
+      drain_cnt        <= 0;
+      draining         <= 0;
+      first_drain      <= 1;
       m_axis_tdata_reg <= 0;
       m_axis_tvalid    <= 0;
       m_axis_tlast     <= 0;
+      a_full           <= 0;
+      b_full           <= 0;
+      a_data           <= 0;
+      b_data           <= 0;
+      a_last           <= 0;
+      b_last           <= 0;
     end else begin
-      // advance cur_row on every valid cycle
+      if (s_axis_A_tvalid && !a_full) begin
+        a_data <= s_axis_A_tdata;
+        a_last <= s_axis_A_tlast;
+      end
+      if (s_axis_B_tvalid && !b_full) begin
+        b_data <= s_axis_B_tdata;
+        b_last <= s_axis_B_tlast;
+      end
+
+      if (consume) begin
+        a_full <= s_axis_A_tvalid && !a_full;
+        b_full <= s_axis_B_tvalid && !b_full;
+      end else begin
+        if (s_axis_A_tvalid && !a_full) a_full <= 1;
+        if (s_axis_B_tvalid && !b_full) b_full <= 1;
+      end
+
       if (valid) begin
         cur_row <= {cur_row[SIZE-2:0], cur_row[SIZE-1]};
       end
 
-      // beat_cnt counts consume cycles
       if (consume) begin
         beat_cnt <= beat_cnt + 1;
       end
 
-      // start drain on the cycle we consume tlast
-      if (consume && s_axis_A_tlast) begin
+      if (consume && (a_last || b_last)) begin
         draining  <= 1;
-        drain_cnt <= SIZE + 1;  // extra cycle because first drain sample is skipped
+        drain_cnt <= SIZE + 1;
       end
 
-      // drain counter
       if (drain_valid) begin
         drain_cnt   <= drain_cnt - 1;
         first_drain <= 0;
@@ -133,7 +148,6 @@ module sa_wrapper_axi_test #(
         end
       end
 
-      // output: sample SA result when available and channel is free
       if (output_available && valid) begin
         for (int i = 0; i < SIZE; i++) begin
           m_axis_tdata_reg[i*DATA_WIDTH_OUT+:DATA_WIDTH_OUT] <= result_row[i];
