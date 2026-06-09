@@ -125,7 +125,7 @@ module SA_wrapper #(
     for (i = 0; i < ELEMS_PER_WORD; i++) begin : gen_input
       always @(posedge aclk, negedge aresetn) begin
         if (!aresetn) begin
-          a_col[col*ELEMS_PER_WORD+i] <= 0;
+          a_row[col*ELEMS_PER_WORD+i] <= 0;
           b_row[col*ELEMS_PER_WORD+i] <= 0;
         end else begin
           if (a_valid) begin
