@@ -181,12 +181,14 @@ module sa_wrapper_axi_ctrl_sv #(
 
   // SA load controls
   // During initial loading (!done): load enabled
-  // After loading (done): normal mode keeps loading, reuse mode stops
-  // During drain: force loads to flush with zeros
+  // After loading: stop B permanently (b_inner is a register array that must
+  // not be overwritten during drain — doing so corrupts partial sums still
+  // propagating through the PE cascade).  A keeps loading during drain
+  // (zeros flush through the shift chain harmlessly).
   wire a_load_en = a_loading_done ? (mode_reuse_a ? 1'b0 : 1'b1) : 1'b1;
-  wire b_load_en = b_loading_done ? (mode_reuse_b ? 1'b0 : 1'b1) : 1'b1;
+  wire b_load_en = !b_loading_done;
   wire load_a    = valid && (a_load_en || (state == DRAIN));
-  wire load_b    = valid && (b_load_en || (state == DRAIN));
+  wire load_b    = valid && b_load_en;
 
   // tready is high during loading (a_loading_done=0) even for reuse channels.
   // After loading completes, reuse channels drop tready.

@@ -151,6 +151,39 @@ module sa_wrapper_axi_ctrl_tb;
 
   int out_count;
   int errors;
+  int result[4][4];
+  int B_nontriv[4][4];
+  int expected2[4][4];
+
+  // ======================================================================
+  // Output collector — captures valid output beats
+  // ======================================================================
+  always @(posedge clk) begin
+    if (m_axis_tvalid && m_axis_tready) begin
+      for (int i = 0; i < SIZE; i++)
+        result[out_count][i] = m_axis_tdata[i*DATA_WIDTH_OUT+:DATA_WIDTH_OUT];
+      out_count++;
+    end
+  end
+
+  // ======================================================================
+  // Result checker helper
+  // ======================================================================
+  task check_result(int expected[4][4]);
+    for (int r = 0; r < SIZE; r++) begin
+      for (int c = 0; c < SIZE; c++) begin
+        if (result[r][c] !== expected[r][c]) begin
+          $display("  MISMATCH [%0d][%0d]: got %0d, expected %0d",
+                   r, c, result[r][c], expected[r][c]);
+          errors++;
+        end
+      end
+    end
+    if (errors == 0)
+      $display("  PASS: all %0dx%0d results correct", SIZE, SIZE);
+    else
+      $display("  FAIL: %0d errors", errors);
+  endtask
 
   // ======================================================================
   // Main test sequence
@@ -185,37 +218,85 @@ module sa_wrapper_axi_ctrl_tb;
     $fflush();
 
     // =====================================================================
-    // TEST 1: Normal mode (both normal)
+    // TEST 1: Normal mode (both streaming) — identity B
     // =====================================================================
-    $display("=== TEST 1: Normal mode (both streaming) ===");
+    $display("=== TEST 1: Normal mode (identity B) ===");
     $fflush();
+    out_count = 0;
     axil_write(4'h0, 32'h1);  // start
 
     for (int i = 0; i < 4; i++) send_both(A[i], B_id[i], i == 3);
 
-    // drain should produce some outputs
     wait (m_axis_tlast);
     @(posedge clk);
     @(posedge clk);
     @(posedge clk);
-    $display("  PASS: normal mode no deadlock");
-    $fflush();
+    // With identity B: A * I = A
+    check_result(A);
     s_axis_A_tlast = 0;
     s_axis_B_tlast = 0;
 
     // =====================================================================
-    // TEST 2: B reuse mode
+    // TEST 2: Normal mode — non-identity B (column 3 stress test)
     // =====================================================================
-    $display("=== TEST 2: B reuse mode ===");
+    $display("=== TEST 2: Normal mode (non-identity B) ===");
+    $fflush();
+    out_count = 0;
+    axil_write(4'h0, 32'h1);  // start (no mode change = normal)
+
+    // B[r][c] = r*10 + c  (matching the user's pattern)
+    for (int r = 0; r < 4; r++)
+      for (int c = 0; c < 4; c++)
+        B_nontriv[r][c] = r*10 + c;
+    for (int r = 0; r < 4; r++)
+      for (int c = 0; c < 4; c++) begin
+        expected2[r][c] = 0;
+        for (int k = 0; k < 4; k++)
+          expected2[r][c] += A[r][k] * B_nontriv[k][c];
+      end
+
+    for (int i = 0; i < 4; i++) send_both(A[i], B_nontriv[i], i == 3);
+
+    wait (m_axis_tlast);
+    @(posedge clk);
+    @(posedge clk);
+    @(posedge clk);
+    check_result(expected2);
+    s_axis_A_tlast = 0;
+    s_axis_B_tlast = 0;
+
+    // =====================================================================
+    // TEST 3: Sequential runs (no reset) — both must produce same result
+    // =====================================================================
+    $display("=== TEST 3: Two sequential runs (non-identity B) ===");
+    $fflush();
+    for (int run = 0; run < 2; run++) begin
+      out_count = 0;
+      axil_write(4'h0, 32'h1);  // start
+      for (int i = 0; i < 4; i++) send_both(A[i], B_nontriv[i], i == 3);
+      wait (m_axis_tlast);
+      @(posedge clk);
+      @(posedge clk);
+      @(posedge clk);
+      if (run == 0) begin
+        $display("  Run 0 complete, %0d outputs", out_count);
+      end else begin
+        // Compare run 1 vs expected
+        check_result(expected2);
+      end
+      s_axis_A_tlast = 0;
+      s_axis_B_tlast = 0;
+    end
+
+    // =====================================================================
+    // TEST 4: B reuse mode (deadlock check only)
+    // =====================================================================
+    $display("=== TEST 4: B reuse mode ===");
     $fflush();
     axil_write(4'h4, 32'h4);  // mode: b_reuse=1
     axil_write(4'h0, 32'h1);  // start
 
-    // Load B (4 beats with both A and B valid)
     for (int i = 0; i < 4; i++) send_both(A[i], B_id[i], 0);
-
-    // After loading: B in reuse, A still streaming.
-    // Stream A data only (B input is ignored)
     for (int i = 0; i < 4; i++) send_A(A[i], i == 3);
 
     wait (m_axis_tlast);
@@ -226,18 +307,15 @@ module sa_wrapper_axi_ctrl_tb;
     s_axis_B_tlast = 0;
 
     // =====================================================================
-    // TEST 3: A reuse mode
+    // TEST 5: A reuse mode (deadlock check only)
     // =====================================================================
-    $display("=== TEST 3: A reuse mode ===");
+    $display("=== TEST 5: A reuse mode ===");
     axil_write(4'h8, 32'd12);  // loop_len_a = 12
     axil_write(4'h4, 32'h1);  // mode: a_reuse=1
     axil_write(4'h0, 32'h1);  // start
 
-    // Load A for 12 beats (with B data)
     for (int i = 0; i < 12; i++) send_both(A_fill_row, B_id[0], 0);
 
-    // After loading: A in reuse, B streaming.
-    // Stream B data only (A input is ignored)
     for (int i = 0; i < 4; i++) begin
       zero_row[i] = 1;
       send_B(zero_row, i == 3);
@@ -252,18 +330,16 @@ module sa_wrapper_axi_ctrl_tb;
     s_axis_B_tlast = 0;
 
     // =====================================================================
-    // TEST 4: Both reuse
+    // TEST 6: Both reuse (deadlock check only)
     // =====================================================================
-    $display("=== TEST 4: Both reuse mode ===");
+    $display("=== TEST 6: Both reuse mode ===");
     $fflush();
     axil_write(4'h8, 32'd4);  // loop_len_a = 4
     axil_write(4'h4, 32'h5);  // mode: a_reuse=1, b_reuse=1
     axil_write(4'h0, 32'h1);  // start
 
-    // Load both (4 beats)
     for (int i = 0; i < 4; i++) send_both(A[i], B_id[i], i == 3);
 
-    // compute_cnt will trigger drain after loop_len_a=4 compute cycles
     wait (m_axis_tlast);
     @(posedge clk);
     $display("  PASS: both reuse no deadlock");
