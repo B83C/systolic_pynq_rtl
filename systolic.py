@@ -128,13 +128,6 @@ class SystolicArray:
         Returns
         -------
         result : ndarray (N, SIZE)  uint32
-
-        Notes
-        -----
-        This loader resets both DMA channels before each transfer so that
-        the method can be called sequentially without a full overlay reload.
-        See ``_mm2s_channel.start()`` / ``_s2mm_channel.start()`` handling
-        in the PYNQ DMA driver.
         """
         n = A.shape[0]
         assert A.shape == B.shape == (n, self.size)
@@ -150,7 +143,13 @@ class SystolicArray:
         self.set_mode(a_reuse, b_reuse)
         self.set_loop_len(loop_len)
 
-        # Start DMA transfers (recv first so S2MM is ready for SA output)
+        # Start DMA transfers (recv first so S2MM is ready for SA output).
+        # PYNQ _SDMAChannel.transfer() relies on RS=1 (set by start()).
+        # After a prior transfer the AXI DMA may have cleared RS, so
+        # re-assert it via start() before each transfer().
+        for ch in [self.dma_a.recvchannel, self.dma_a.sendchannel,
+                   self.dma_b.sendchannel]:
+            ch.start()
         self.dma_a.recvchannel.transfer(out)
         self.dma_a.sendchannel.transfer(in_a)
         self.dma_b.sendchannel.transfer(in_b)
@@ -158,18 +157,10 @@ class SystolicArray:
         # Start computation
         self.start()
 
-        # Wait for DMA completion
+        # Wait for DMA completion via PYNQ's own wait() which
+        # properly invalidates buffers and clears _active_buffer.
         for ch in [self.dma_a.sendchannel, self.dma_b.sendchannel, self.dma_a.recvchannel]:
-            off = ch._offset
-            for _ in range(500):
-                sr = ch._mmio.read(off + 4)
-                if sr & 0x70:
-                    raise RuntimeError(f"DMA error sr=0x{sr:x}")
-                if sr & 2:
-                    break
-                time.sleep(0.001)
-            else:
-                raise RuntimeError("DMA timeout")
+            ch.wait()
         self.wait_done()
 
         # Unpack result

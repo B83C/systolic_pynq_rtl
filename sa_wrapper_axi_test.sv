@@ -112,24 +112,36 @@ module sa_wrapper_axi_test #(
       a_last           <= 0;
       b_last           <= 0;
     end else begin
-      if (s_axis_A_tvalid && !a_full) begin
-        a_data <= s_axis_A_tdata;
-        a_last <= s_axis_A_tlast;
-      end
-      if (s_axis_B_tvalid && !b_full) begin
-        b_data <= s_axis_B_tdata;
-        b_last <= s_axis_B_tlast;
-      end
-
+      // Consume branch: the SA processes a_data/b_data (old values sampled
+      // before the NBA).  Any new AXI data presented on the same cycle is
+      // captured immediately for the *next* consumption — without this the
+      // first beat of a non‑reset run would be lost (the buffer was left full
+      // by the previous run's drain).
       if (consume) begin
+        if (s_axis_A_tvalid) begin
+          a_data <= s_axis_A_tdata;
+          a_last <= s_axis_A_tlast;
+        end
+        if (s_axis_B_tvalid) begin
+          b_data <= s_axis_B_tdata;
+          b_last <= s_axis_B_tlast;
+        end
         a_full <= s_axis_A_tvalid && !a_full;
         b_full <= s_axis_B_tvalid && !b_full;
       end else begin
-        if (s_axis_A_tvalid && !a_full) a_full <= 1;
-        if (s_axis_B_tvalid && !b_full) b_full <= 1;
+        if (s_axis_A_tvalid && !a_full) begin
+          a_data <= s_axis_A_tdata;
+          a_last <= s_axis_A_tlast;
+          a_full <= 1;
+        end
+        if (s_axis_B_tvalid && !b_full) begin
+          b_data <= s_axis_B_tdata;
+          b_last <= s_axis_B_tlast;
+          b_full <= 1;
+        end
       end
 
-      if (valid) begin
+      if (valid && (!draining || output_available)) begin
         cur_row <= {cur_row[SIZE-2:0], cur_row[SIZE-1]};
       end
 
@@ -138,8 +150,9 @@ module sa_wrapper_axi_test #(
       end
 
       if (consume && (a_last || b_last)) begin
-        draining  <= 1;
-        drain_cnt <= SIZE + 1;
+        draining    <= 1;
+        first_drain <= 1;
+        drain_cnt   <= SIZE + 1;
       end
 
       if (drain_valid) begin

@@ -153,10 +153,11 @@ module sa_wrapper_axi_ctrl_sv #(
 
   reg  [SIZE-1:0]    cur_row_r;
 
-  // one‑hot current row
+  // one‑hot current row (rotate on every valid beat except the first drain
+  // cycle which is skipped for output — see output_available)
   always @(posedge clk, negedge rst_n) begin
     if (!rst_n) cur_row_r <= 1;
-    else if (valid) cur_row_r <= {cur_row_r[SIZE-2:0], cur_row_r[SIZE-1]};
+    else if (valid && !first_drain) cur_row_r <= {cur_row_r[SIZE-2:0], cur_row_r[SIZE-1]};
   end
 
   // ======================================================================
