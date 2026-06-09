@@ -3,7 +3,7 @@
 module SA #(
     parameter unsigned SIZE           = 8,
     parameter unsigned MAX_LOOP       = 3 * SIZE,
-    parameter unsigned DATA_WIDTH_IN  = 16,
+    parameter unsigned DATA_WIDTH_IN  = 8,
     parameter unsigned DATA_WIDTH_OUT = 32
 ) (
     input clk,
@@ -24,8 +24,7 @@ module SA #(
   logic [DATA_WIDTH_IN-1:0] b_inner[SIZE][SIZE];
   logic [DATA_WIDTH_IN-1:0] a_inner_loop[SIZE][MAX_LOOP];
 
-  wire [15:0] partial_sum_lo[SIZE + 1][SIZE];
-  wire [15:0] partial_sum_hi[SIZE + 1][SIZE];
+  logic [DATA_WIDTH_OUT-1:0] partial_sum[SIZE + 1][SIZE];
 
   initial begin
     b_inner = '{default: '{default: '0}};
@@ -35,7 +34,7 @@ module SA #(
   genvar k;
   generate
     for (k = 0; k < SIZE; k = k + 1) begin : gen_assign_ports
-      assign result_row[k] = {partial_sum_hi[SIZE][k], partial_sum_lo[SIZE][k]};
+      assign result_row[k] = partial_sum[SIZE][k];
     end
   endgenerate
 
@@ -45,6 +44,8 @@ module SA #(
       a_inner_loop <= '{default: '{default: '0}};
     end else if (valid) begin
       for (integer i = 0; i < SIZE; i++) begin
+        partial_sum[0][i] <= c_row[i];
+
         a_inner_loop[i][0] <= load_a ? a_row[i] : a_inner_loop[i][loop_len_a - 1];
 
         for (integer j = 0; j < MAX_LOOP - 1; j++) begin
@@ -61,31 +62,23 @@ module SA #(
   genvar i, j;
 
   generate
-    for (j = 0; j < SIZE; j = j + 1) begin : gen_c_row
-      assign partial_sum_lo[0][j] = c_row[j][15:0];
-      assign partial_sum_hi[0][j] = c_row[j][31:16];
-    end
-  endgenerate
-
-  generate
     for (i = 0; i < SIZE; i = i + 1) begin : gen_row
       for (j = 0; j < SIZE; j = j + 1) begin : gen_col
         wire [DATA_WIDTH_IN-1:0] b = b_inner[i][j];
         wire [DATA_WIDTH_IN-1:0] a = a_inner_loop[i][i];
 
         pe #(
-            .DATA_WIDTH_IN (DATA_WIDTH_IN)
+            .DATA_WIDTH_IN (DATA_WIDTH_IN),
+            .DATA_WIDTH_OUT(DATA_WIDTH_OUT)
         ) pe_unit (
             .clk  (clk),
             .rst_n(rst_n),
             .tick (valid),
 
-            .a_in  (a),
-            .b_in  (b),
-            .c_in_lo(partial_sum_lo[i][j]),
-            .c_in_hi(partial_sum_hi[i][j]),
-            .psum_lo(partial_sum_lo[i+1][j]),
-            .psum_hi(partial_sum_hi[i+1][j])
+            .a_in(a),
+            .b_in(b),
+            .c_in(partial_sum[i][j]),
+            .partial_sum(partial_sum[i+1][j])
         );
       end
     end
