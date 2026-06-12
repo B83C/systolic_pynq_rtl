@@ -14,6 +14,7 @@ int exp_B1[4][4], exp_B2[4][4], exp_eye[4][4], exp_acc[4][4], exp_3way[4][4];
 int exp_AB1[4][4];
 int exp_A1B[4][4], exp_A2B[4][4];
 int exp_ring_acc[4][4];
+int Bneg[4][4], exp_neg[4][4];
 
 // -----------------------------------------------------------------------
 // helper functions

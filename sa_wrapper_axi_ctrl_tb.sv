@@ -61,6 +61,7 @@ module sa_wrapper_axi_ctrl_tb;
   `include "tb/tb_test_11.svh"
   `include "tb/tb_test_12.svh"
   `include "tb/tb_test_13.svh"
+  `include "tb/tb_test_14.svh"
 
   // output monitor — always-on capture
   always @(posedge clk)
@@ -104,8 +105,13 @@ module sa_wrapper_axi_ctrl_tb;
     matmul(A, B1, exp_AB1);
     matmul(A, B1, exp_A1B);
     matmul(A2, B1, exp_A2B);
-    for (int r = 0; r < SIZE; r++)
+      for (int r = 0; r < SIZE; r++)
     for (int c = 0; c < SIZE; c++) exp_ring_acc[r][c] = exp_A1B[r][c] + exp_A2B[r][c];
+    Bneg[0][0] = -1;  Bneg[0][1] =   2;  Bneg[0][2] =  -3;  Bneg[0][3] =   4;
+    Bneg[1][0] =  5;  Bneg[1][1] =  -6;  Bneg[1][2] =   7;  Bneg[1][3] =  -8;
+    Bneg[2][0] = -9;  Bneg[2][1] =  10;  Bneg[2][2] = -11;  Bneg[2][3] =  12;
+    Bneg[3][0] = 13;  Bneg[3][1] = -14;  Bneg[3][2] =  15;  Bneg[3][3] = -16;
+    matmul(A, Bneg, exp_neg);
     for (int r = 0; r < SIZE; r++)
     for (int c = 0; c < SIZE; c++) begin
       exp_acc[r][c]  = exp_B1[r][c] + exp_B2[r][c];
@@ -124,7 +130,8 @@ module sa_wrapper_axi_ctrl_tb;
     test_10_random_backpressure();
     test_11_ring_multi_a();
     test_12_ring_accumulation();
-    test_13_c_matrix();  // TODO: c_rd_ptr advance timing debug
+    test_13_c_matrix();
+    test_14_negative();  // TODO: c_rd_ptr advance timing debug
 
     // ═════════════════════════════════════════════════════════════════════
     // Summary
