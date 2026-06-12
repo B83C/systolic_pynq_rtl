@@ -171,13 +171,11 @@ class SystolicArray:
 
     def _dma_send(self, buf):
         """Send one buffer through MM2S, wait for completion."""
-        self.dma.sendchannel.start()
         self.dma.sendchannel.transfer(buf)
         self.dma.sendchannel.wait()
 
     def _dma_recv(self, buf):
         """Prepare S2MM receive buffer, wait for completion."""
-        self.dma.recvchannel.start()
         self.dma.recvchannel.transfer(buf)
         self.dma.recvchannel.wait()
 
@@ -220,6 +218,7 @@ class SystolicArray:
 
         # Load A ring
         self.reg_write(self.REG_A_LOAD, 1)
+        self.dma.sendchannel.start()
         self._dma_send(in_a)
 
         # Stream B (computation starts) + receive output
@@ -266,6 +265,7 @@ class SystolicArray:
             in_c.freebuffer()
 
         self.reg_write(self.REG_A_LOAD, 0)
+        self.dma.sendchannel.start()
         self._dma_send(in_a)
 
         self.dma.recvchannel.start()
