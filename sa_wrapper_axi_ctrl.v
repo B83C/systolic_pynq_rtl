@@ -3,19 +3,15 @@
 (* keep = "true" *)
 module sa_wrapper_axi_ctrl #(
     parameter SIZE           = 4,
+    parameter A_DEPTH        = 4,
+    parameter C_DEPTH        = 4,
     parameter DATA_WIDTH_IN  = 8,
     parameter DATA_WIDTH_OUT = 32
 ) (
     input wire clk,
     input wire rst_n,
 
-    // AXI4-Stream: input A
-    input  wire [SIZE*DATA_WIDTH_IN-1:0] s_axis_A_tdata,
-    input  wire                          s_axis_A_tvalid,
-    output wire                          s_axis_A_tready,
-    input  wire                          s_axis_A_tlast,
-
-    // AXI4-Stream: input B
+    // AXI4-Stream: input B  (also used for A and C ring loading)
     input  wire [SIZE*DATA_WIDTH_IN-1:0] s_axis_B_tdata,
     input  wire                          s_axis_B_tvalid,
     output wire                          s_axis_B_tready,
@@ -30,7 +26,7 @@ module sa_wrapper_axi_ctrl #(
     // AXI4-Lite: control / status
     input  wire              s_axil_awvalid,
     output wire              s_axil_awready,
-    input  wire [3:0]        s_axil_awaddr,
+    input  wire [5:0]        s_axil_awaddr,
     input  wire [31:0]       s_axil_wdata,
     input  wire              s_axil_wvalid,
     output wire              s_axil_wready,
@@ -40,24 +36,25 @@ module sa_wrapper_axi_ctrl #(
 
     input  wire              s_axil_arvalid,
     output wire              s_axil_arready,
-    input  wire [3:0]        s_axil_araddr,
+    input  wire [5:0]        s_axil_araddr,
     output wire  [31:0]       s_axil_rdata,
     output wire [1:0]        s_axil_rresp,
     output wire               s_axil_rvalid,
-    input  wire              s_axil_rready
+    input  wire              s_axil_rready,
+
+    output wire a_bypass,
+    output wire idle
 );
 
   sa_wrapper_axi_ctrl_sv #(
       .SIZE(SIZE),
+      .A_DEPTH(A_DEPTH),
+      .C_DEPTH(C_DEPTH),
       .DATA_WIDTH_IN(DATA_WIDTH_IN),
       .DATA_WIDTH_OUT(DATA_WIDTH_OUT)
   ) impl (
       .clk              (clk),
       .rst_n            (rst_n),
-      .s_axis_A_tdata   (s_axis_A_tdata),
-      .s_axis_A_tvalid  (s_axis_A_tvalid),
-      .s_axis_A_tready  (s_axis_A_tready),
-      .s_axis_A_tlast   (s_axis_A_tlast),
       .s_axis_B_tdata   (s_axis_B_tdata),
       .s_axis_B_tvalid  (s_axis_B_tvalid),
       .s_axis_B_tready  (s_axis_B_tready),
@@ -81,7 +78,9 @@ module sa_wrapper_axi_ctrl #(
       .s_axil_rdata     (s_axil_rdata),
       .s_axil_rresp     (s_axil_rresp),
       .s_axil_rvalid    (s_axil_rvalid),
-      .s_axil_rready    (s_axil_rready)
+      .s_axil_rready    (s_axil_rready),
+      .a_bypass         (a_bypass),
+      .idle             (idle)
   );
 
 endmodule
