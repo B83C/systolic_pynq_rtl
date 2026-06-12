@@ -66,6 +66,11 @@ class SystolicArray:
         self.a_depth = self._probe_depth(0x1C, a_depth or 8)
         self.c_depth = self._probe_depth(0x24, c_depth or 8)
 
+    def program(self, bitstream):
+        """Download bitstream to FPGA. Call once after power cycle."""
+        ol = Overlay(bitstream, download=True)
+        self.dma = ol.axi_dma_0
+
     def _probe_depth(self, addr, fallback):
         """Determine ring depth by writing all-ones and reading back."""
         self.mmio.write(addr, 0xFFFFFFFF)
