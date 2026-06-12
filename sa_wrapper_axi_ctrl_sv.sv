@@ -92,6 +92,7 @@ module sa_wrapper_axi_ctrl_sv #(
   // 0x1C  A_LOOP_END:   last ring index for A
   // 0x20  C_LOOP_START: first ring index for C
   // 0x24  C_LOOP_END:   last ring index for C
+  // 0x2C  RST_INDEX:    write to reset ring pointers and pending flags
 
   reg acc_output_en;
   reg b_underflow;
@@ -186,6 +187,7 @@ module sa_wrapper_axi_ctrl_sv #(
           6'h1C:   a_loop_end <= s_axil_wdata[A_RING_ADDR_W-1:0];
           6'h20:   c_loop_start <= s_axil_wdata[C_RING_ADDR_W-1:0];
           6'h24:   c_loop_end <= s_axil_wdata[C_RING_ADDR_W-1:0];
+          6'h2C:   ; // RST_INDEX handled below
           default: ;
         endcase
         s_axil_bvalid <= 1;
@@ -217,11 +219,20 @@ module sa_wrapper_axi_ctrl_sv #(
       end else if (s_axil_rready) begin
         s_axil_rvalid <= 0;
       end
-      if (state_nxt == LOAD_A && a_load_pending) begin
+      if (state == LOAD_A && a_load_pending) begin
         a_load_pending <= 0;
       end
-      if (state_nxt == LOAD_C && c_load_pending) begin
+      if (state == LOAD_C && c_load_pending) begin
         c_load_pending <= 0;
+      end
+
+      // RST_INDEX: reset ring pointers and flags, keep config
+      if (axil_wr_en && (s_axil_awaddr == 6'h2C)) begin
+        a_rd_ptr      <= a_loop_start;
+        c_rd_ptr      <= c_loop_start;
+        a_load_pending  <= 0;
+        c_load_pending  <= 0;
+        b_underflow     <= 0;
       end
     end
   end
