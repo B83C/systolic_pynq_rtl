@@ -13,8 +13,11 @@ module counter #(
     input reg [MaxW - 1:0] dyn_max = 0,
 
     output wire ending,
+    output wire zero,
     output reg [MaxW - 1:0] count
 );
+  assign zero = count == 0;
+
   generate
     if (COUNTDOWN) begin
       assign ending = count == 0;

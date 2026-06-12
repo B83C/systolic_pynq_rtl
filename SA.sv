@@ -2,7 +2,6 @@
 
 module SA #(
     parameter unsigned SIZE           = 8,
-    parameter unsigned MAX_LOOP       = 3 * SIZE,
     parameter unsigned DATA_WIDTH_IN  = 8,
     parameter unsigned DATA_WIDTH_OUT = 32
 ) (
