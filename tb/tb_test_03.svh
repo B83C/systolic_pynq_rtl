@@ -1,0 +1,29 @@
+task test_03_accumulation_accout0();
+  $display("=== TEST 3: FB_CNT=2, acc_out=0 ===");
+  reset_test();
+  errors = 0; out_count = 0;
+  axil_write(5'h18, 0);
+  axil_write(5'h0C, 2);
+  axil_write(5'h14, 0);
+  load_A();
+
+  stream_mat(B1, 0);
+  stream_mat(B2, 0);
+  stream_mat(B_eye, 1);
+
+  wait_output_done();
+  $display("  captured %0d outputs (acc_out=0: only group-boundary)", out_count);
+
+  for (int i = 0; i < out_count; i++) begin
+    $write("  out[%0d] =", i);
+    for (int c = 0; c < SIZE; c++) $write(" %0d", result[i][c]);
+    $write(" tlast=%0d\n", result_tlast[i]);
+  end
+
+  if (out_count >= SIZE) begin
+    $display("  Checking final accumulated result");
+    for (int r = 0; r < SIZE; r++)
+      check_row_str($sformatf("acc row %0d", r), r, exp_3way[r]);
+    $display("  final accumulated correct\n");
+  end
+endtask
