@@ -251,6 +251,11 @@ module sa_wrapper_axi_ctrl_sv #(
       end else begin
         soft_rst <= 0;
       end
+
+      if (soft_rst) begin
+        s_axil_bvalid <= 0;
+        s_axil_rvalid <= 0;
+      end
     end
   end
 
