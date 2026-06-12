@@ -99,6 +99,7 @@ module sa_wrapper_axi_ctrl_sv #(
   reg [7:0] acc_cnt;
   reg a_load_pending;
   reg c_load_pending;
+  reg soft_rst;
   reg [A_RING_ADDR_W-1:0] a_loop_start;
   reg [A_RING_ADDR_W-1:0] a_loop_end;
   reg [C_RING_ADDR_W-1:0] c_loop_start;
@@ -172,6 +173,7 @@ module sa_wrapper_axi_ctrl_sv #(
       acc_output_en <= 0;
       acc_cnt       <= 0;
       b_underflow   <= 0;
+      soft_rst      <= 0;
       s_axil_bvalid <= 0;
       s_axil_rvalid <= 0;
       s_axil_rdata  <= 0;
@@ -226,13 +228,11 @@ module sa_wrapper_axi_ctrl_sv #(
         c_load_pending <= 0;
       end
 
-      // RST_INDEX: reset ring pointers and flags, keep config
+      // RST_INDEX: trigger soft reset pulse
       if (axil_wr_en && (s_axil_awaddr == 6'h2C)) begin
-        a_rd_ptr      <= a_loop_start;
-        c_rd_ptr      <= c_loop_start;
-        a_load_pending  <= 0;
-        c_load_pending  <= 0;
-        b_underflow     <= 0;
+        soft_rst <= 1;
+      end else begin
+        soft_rst <= 0;
       end
     end
   end
@@ -243,6 +243,11 @@ module sa_wrapper_axi_ctrl_sv #(
     if (!rst_n) begin
       current_row <= 1;
       b_row <= '{default: '0};
+      output_is_last <= 0;
+    end else if (soft_rst) begin
+      current_row <= 1;
+      b_row <= '{default: '0};
+      output_is_last <= 0;
     end else begin
       if (b_consume) begin
         current_row <= {current_row[SIZE-2:0], current_row[SIZE-1]};
@@ -278,6 +283,8 @@ module sa_wrapper_axi_ctrl_sv #(
   always @(posedge clk, negedge rst_n) begin
     if (!rst_n) begin
       a_ring_internal <= '{default: '0};
+    end else if (soft_rst) begin
+      a_ring_internal <= '{default: '0};
     end else begin
       for (int j = 0; j < SIZE; j++) begin
         for (int k = 0; k < SIZE; k++) begin
@@ -294,6 +301,8 @@ module sa_wrapper_axi_ctrl_sv #(
 
   always_ff @(posedge clk, negedge rst_n) begin
     if (!rst_n) begin
+      a_rd_ptr <= a_loop_start;
+    end else if (soft_rst) begin
       a_rd_ptr <= a_loop_start;
     end else begin
       if (state_nxt != state) begin
@@ -318,6 +327,9 @@ module sa_wrapper_axi_ctrl_sv #(
 
   always_ff @(posedge clk, negedge rst_n) begin
     if (!rst_n) begin
+      c_rd_ptr <= c_loop_start;
+      c_ring   <= '{default: '0};
+    end else if (soft_rst) begin
       c_rd_ptr <= c_loop_start;
       c_ring   <= '{default: '0};
     end else begin
@@ -353,6 +365,8 @@ module sa_wrapper_axi_ctrl_sv #(
   always @(posedge clk, negedge rst_n) begin
     if (!rst_n) begin
       c_row <= '{default: '0};
+    end else if (soft_rst) begin
+      c_row <= '{default: '0};
     end else if (state == LOAD_A || state == LOAD_C) begin
       if (acc_cnt == 0) c_row <= '{default: '0};
     end else begin
@@ -365,11 +379,14 @@ module sa_wrapper_axi_ctrl_sv #(
   end
 
   always @(posedge clk) begin
-    delayed_b_consume <= advance;
+    if (soft_rst) delayed_b_consume <= 0;
+    else delayed_b_consume <= advance;
   end
 
   always @(posedge clk, negedge rst_n) begin
     if (!rst_n) begin
+      output_idx_oh <= 0;
+    end else if (soft_rst) begin
       output_idx_oh <= 0;
     end else if (advance) begin
       output_idx_oh <= {output_idx_oh[SIZE-2:0], current_row[SIZE-1]};
@@ -394,6 +411,9 @@ module sa_wrapper_axi_ctrl_sv #(
   assign output_going_on = output_idx_oh != 0;
   always @(posedge clk, negedge rst_n) begin
     if (!rst_n) begin
+      output_valid <= 0;
+      output_last  <= 0;
+    end else if (soft_rst) begin
       output_valid <= 0;
       output_last  <= 0;
     end else begin
