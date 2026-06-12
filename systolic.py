@@ -4,22 +4,20 @@ import time
 
 
 class SystolicArray:
-    """PYNQ driver for the systolic-array AXI wrapper (revised register map).
+    """PYNQ driver for the systolic-array AXI wrapper.
 
     Block design:
-      - ``sa_wrapper_axi_ctrl_v``  (AXI-Lite control + AXI-Stream data)
-      - ``axi_dma_0``   MM2S → s_axis_B  (A/C data),  S2MM ← m_axis (result)
-      - ``axi_dma_1``   MM2S → s_axis_B  (B data)
+      - ``sa_wrapper_axi_ctrl``  (AXI-Lite control + AXI-Stream data)
+      - ``axi_dma_0``   MM2S → s_axis_B (A/C/B),  S2MM ← m_axis (result)
       - ``axi_interconnect``  PS → AXI-Lite / DMA regs
       - ``idle`` GPIO / interrupt (optional)
 
-    All input data flows through ``s_axis_B_tdata``.  The wrapper routes it
-    to the A ring, C ring, or B matrix based on the internal state machine
-    (LOAD_A / LOAD_C / LOAD_B).
+    All input (A, C, B) flows through ``s_axis_B_tdata``.  The wrapper
+    routes it based on the internal state (LOAD_A / LOAD_C / LOAD_B).
     """
 
     # ------------------------------------------------------------------
-    #  Register map (AXI-Lite, 4-byte aligned, 6-bit address)
+    #  Register map (AXI-Lite, 4-byte aligned, 6-bit addresses)
     # ------------------------------------------------------------------
     REG_STATE       = 0x00   # RO  [1:0] state (0=IDLE, 1=LOAD_A, 2=LOAD_B, 3=LOAD_C)
     REG_STATUS      = 0x04   # RO  [0] b_underflow (clear-on-read)
@@ -50,12 +48,10 @@ class SystolicArray:
 
         if bitstream is not None:
             self.ol = Overlay(bitstream)
-            self.dma_ac = self.ol.axi_dma_0   # MM2S → A/C, S2MM ← result
-            self.dma_b  = self.ol.axi_dma_1   # MM2S → B
+            self.dma = self.ol.axi_dma_0  # MM2S → input, S2MM ← output
         else:
             self.ol = None
-            self.dma_ac = None
-            self.dma_b = None
+            self.dma = None
 
         self.mmio = MMIO(ctrl_base_addr, 0x1000)
 
@@ -85,7 +81,7 @@ class SystolicArray:
             time.sleep(poll_us / 1e6)
 
     # ------------------------------------------------------------------
-    #  Configuration helpers
+    #  Configuration
     # ------------------------------------------------------------------
     def configure(self, fb_cnt=0, acc_out=True,
                   a_loop_start=0, a_loop_end=None,
@@ -103,7 +99,7 @@ class SystolicArray:
         self.reg_write(self.REG_C_LOOP_END, c_loop_end)
 
     # ------------------------------------------------------------------
-    #  Data packing
+    #  Data packing — all input via single MM2S channel
     # ------------------------------------------------------------------
     @staticmethod
     def pack_rows(rows, words_per_beat, elem_bytes=1):
@@ -112,9 +108,9 @@ class SystolicArray:
         buf = allocate(shape=(n * words_per_beat,), dtype=np.uint32)
         if elem_bytes == 1:          # uint8 → pack 4 per uint32
             for i in range(0, s, 4):
-                col = np.uint32(rows[:, i])
+                col = np.uint32(rows[:, i].astype(np.uint8))
                 for j in range(1, min(4, s - i)):
-                    col |= np.uint32(rows[:, i + j]) << (8 * j)
+                    col |= np.uint32(rows[:, i + j].astype(np.uint8)) << (8 * j)
                 beat = i // 4
                 buf[beat::words_per_beat] = col
         elif elem_bytes == 4:
@@ -124,9 +120,8 @@ class SystolicArray:
 
     @staticmethod
     def pack_c_values(c_vals):
-        """Pack C values (N) into a 1-D uint32 DMA buffer.
-        Each C value is a 32-bit scalar broadcast to all columns of one output row.
-        """
+        """Pack C values (N,) → uint32 DMA buffer.
+        Each C value broadcast to all columns of one output row."""
         n = len(c_vals)
         buf = allocate(shape=(n,), dtype=np.uint32)
         for i in range(n):
@@ -141,36 +136,32 @@ class SystolicArray:
                 out[:, i] = buf[i::words_per_beat]
         return out
 
-    # ------------------------------------------------------------------
-    #  DMA helpers
-    # ------------------------------------------------------------------
-    def _dma_start_all(self):
-        for ch in [self.dma_ac.sendchannel, self.dma_ac.recvchannel,
-                   self.dma_b.sendchannel]:
-            ch.start()
+    def _dma_send(self, buf):
+        """Send one buffer through MM2S, wait for completion."""
+        self.dma.sendchannel.start()
+        self.dma.sendchannel.transfer(buf)
+        self.dma.sendchannel.wait()
 
-    def _dma_wait_all(self):
-        for ch in [self.dma_ac.sendchannel, self.dma_b.sendchannel,
-                   self.dma_ac.recvchannel]:
-            ch.wait()
+    def _dma_recv(self, buf):
+        """Prepare S2MM receive buffer, wait for completion."""
+        self.dma.recvchannel.start()
+        self.dma.recvchannel.transfer(buf)
+        self.dma.recvchannel.wait()
 
     # ------------------------------------------------------------------
-    #  Compute
+    #  Compute  —  C + A × B
     # ------------------------------------------------------------------
     def compute(self, A, B, C=None, fb_cnt=0, acc_out=True):
         """Run one SA transaction:  C + A × B.
 
         Parameters
         ----------
-        A : ndarray (N, SIZE) uint8
-        B : ndarray (N, SIZE) uint8
+        A : ndarray (N, SIZE)  uint8 (signed at PE)
+        B : ndarray (N, SIZE)  uint8 (signed at PE)
         C : ndarray (N,) uint32 or None
-            One 32-bit C value per output row (broadcast to all columns).
-            Pass None for no C matrix (C = 0).
-        fb_cnt : int
-            Accumulation group size (0 = no accumulation).
-        acc_out : bool
-            Enable output during accumulation.
+            One 32-bit C per output row.  None → C = 0.
+        fb_cnt : int   accumulation group size (0 = off)
+        acc_out : bool  show outputs during accumulation
 
         Returns
         -------
@@ -184,32 +175,26 @@ class SystolicArray:
         self.wait_idle()
         self.configure(fb_cnt=fb_cnt, acc_out=acc_out)
 
-        # Allocate buffers
         in_a = self.pack_rows(A, self._input_words_per_beat, 1)
         in_b = self.pack_rows(B, self._input_words_per_beat, 1)
         out = allocate(shape=(n * self._output_words_per_beat,), dtype=np.uint32)
 
-        # Trigger loads and stream data
-        self._dma_start_all()
-
         if C is not None:
-            # Load C first (C_LOAD has priority in IDLE)
             in_c = self.pack_c_values(C)
             self.reg_write(self.REG_C_LOAD, 0)
-            self.dma_ac.sendchannel.transfer(in_c)
-            self.dma_ac.sendchannel.wait()
+            self._dma_send(in_c)
             in_c.freebuffer()
 
-        # Load A
+        # Load A ring
         self.reg_write(self.REG_A_LOAD, 0)
-        self.dma_ac.sendchannel.transfer(in_a)
-        self.dma_ac.recvchannel.transfer(out)
+        self._dma_send(in_a)
 
-        # Stream B — computation starts on first B row
-        self.dma_b.sendchannel.transfer(in_b)
+        # Stream B (computation starts) + receive output
+        self.dma.recvchannel.start()
+        self.dma.recvchannel.transfer(out)
+        self._dma_send(in_b)
+        self.dma.recvchannel.wait()
 
-        # Wait for completion
-        self._dma_wait_all()
         self.wait_idle()
 
         result = self.unpack_rows(out, n, self.size, self._output_words_per_beat)
@@ -226,44 +211,41 @@ class SystolicArray:
         A : ndarray (SIZE, SIZE) uint8
         B_matrices : list of ndarray (SIZE, SIZE) uint8
         C : ndarray (SIZE,) uint32 or None
-        fb_cnt : int
-            Accumulation group size.  Use 0 to accumulate all B matrices.
+        fb_cnt : int  accumulation group size
 
         Returns
         -------
-        result : ndarray (SIZE, SIZE) uint32
+        result : ndarray (M, SIZE) uint32  where M = len(B_matrices) × SIZE
         """
-        n = len(B_matrices)
+        m = len(B_matrices)
         self.wait_idle()
         self.configure(fb_cnt=fb_cnt, acc_out=True)
 
         in_a = self.pack_rows(A, self._input_words_per_beat, 1)
-        out = allocate(shape=(n * self.size * self._output_words_per_beat,),
+        out = allocate(shape=(m * self.size * self._output_words_per_beat,),
                        dtype=np.uint32)
-
-        self._dma_start_all()
 
         if C is not None:
             in_c = self.pack_c_values(C)
             self.reg_write(self.REG_C_LOAD, 0)
-            self.dma_ac.sendchannel.transfer(in_c)
-            self.dma_ac.sendchannel.wait()
+            self._dma_send(in_c)
             in_c.freebuffer()
 
         self.reg_write(self.REG_A_LOAD, 0)
-        self.dma_ac.sendchannel.transfer(in_a)
+        self._dma_send(in_a)
+
+        self.dma.recvchannel.start()
+        self.dma.recvchannel.transfer(out)
 
         for i, B in enumerate(B_matrices):
             in_b = self.pack_rows(B, self._input_words_per_beat, 1)
-            self.dma_b.sendchannel.transfer(in_b)
-            self._dma_start_all()  # re-assert RS after each xfer
+            self._dma_send(in_b)
             in_b.freebuffer()
 
-        self.dma_ac.recvchannel.transfer(out)
-        self._dma_wait_all()
+        self.dma.recvchannel.wait()
         self.wait_idle()
 
-        result = self.unpack_rows(out, n * self.size, self.size,
+        result = self.unpack_rows(out, m * self.size, self.size,
                                    self._output_words_per_beat)
         in_a.freebuffer()
         out.freebuffer()
@@ -273,8 +255,7 @@ class SystolicArray:
     #  On-board self-test
     # ------------------------------------------------------------------
     def test_all(self):
-        """Run the PYNQ check matching TEST 1 and TEST 5 from the
-        Verilator testbench."""
+        """Quick sanity check — A×B1 with SIZE=4 (zero-padded to SIZE=8)."""
         A = np.array([[10, 11, 12, 13, 0, 0, 0, 0],
                       [11, 12, 13, 14, 0, 0, 0, 0],
                       [12, 13, 14, 15, 0, 0, 0, 0],
@@ -284,13 +265,11 @@ class SystolicArray:
                        [9, 10, 11, 12,  0, 0, 0, 0],
                        [13, 14, 15, 16,  0, 0, 0, 0]], dtype=np.uint8)
 
-        # Pad to SIZE=8 rows if BD uses SIZE=8
         if self.size == 8:
-            A = np.pad(A, ((0, 4), (0, 0)), 'constant')
+            A  = np.pad(A,  ((0, 4), (0, 0)), 'constant')
             B1 = np.pad(B1, ((0, 4), (0, 0)), 'constant')
 
         result = self.compute(A, B1)
-        # Check first 4 rows
         exp = np.array([[342, 388, 434, 480, 0, 0, 0, 0],
                         [370, 420, 470, 520, 0, 0, 0, 0],
                         [398, 452, 506, 560, 0, 0, 0, 0],
@@ -300,5 +279,4 @@ class SystolicArray:
         if not ok:
             print("  got:\n", result[:4, :4])
             print("  exp:\n", exp[:4, :4])
-
         return ok
