@@ -192,7 +192,6 @@ class SystolicArray:
         if C is not None:
             assert len(C) == n
 
-        self.wait_idle()
         self.soft_reset()
         self.configure(fb_cnt=fb_cnt, acc_out=acc_out)
 
@@ -239,7 +238,6 @@ class SystolicArray:
         result : ndarray (M, SIZE) uint32  where M = len(B_matrices) × SIZE
         """
         m = len(B_matrices)
-        self.wait_idle()
         self.soft_reset()
         self.configure(fb_cnt=fb_cnt, acc_out=True)
 
