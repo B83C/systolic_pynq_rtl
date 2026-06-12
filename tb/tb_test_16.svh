@@ -29,9 +29,18 @@ task automatic test_16_softrst_in_loadc();
     $display("  FAIL[2]: state stuck at %0d", dut.state); errors++;
   end
 
-  // Now load A and compute — should work
-  $display("  [3] Load A and compute");
+  // Now load A and compute — without reloading C, expect c_ring=0 from hard reset
+  // (soft_rst doesn't clear ring data — real driver reloads C explicitly if needed)
+  $display("  [3] Load A, reload C as zeros, then compute");
   load_A();
+  // Optional: reload C with zeros
+  axil_write(5'h08, 0);
+  repeat (5) @(posedge clk);
+  for (int i = 0; i < SIZE; i++) begin
+    @(posedge clk); s_axis_B_tdata = 0; s_axis_B_tvalid = 1; s_axis_B_tlast = 0;
+  end
+  @(posedge clk); s_axis_B_tvalid = 0;
+  repeat (5) @(posedge clk);
   stream_mat(B1, 1);
   while (out_count < SIZE) @(posedge clk);
   @(posedge clk);

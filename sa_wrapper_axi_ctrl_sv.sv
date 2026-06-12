@@ -333,7 +333,6 @@ module sa_wrapper_axi_ctrl_sv #(
       c_ring   <= '{default: '0};
     end else if (soft_rst) begin
       c_rd_ptr <= c_loop_start;
-      c_ring   <= '{default: '0};
     end else begin
       if (state_nxt != state) begin
         c_rd_ptr <= c_loop_start;
