@@ -111,6 +111,10 @@ task wait_output_done();
   while (!result_tlast[out_count-1]) @(posedge clk);
 endtask
 
+task soft_rst_via_axil();
+  axil_write(6'h2C, 0);
+endtask
+
 task check_row_str(string label, int idx, int expected[4]);
   for (int c = 0; c < SIZE; c++)
     if (result[idx][c] !== expected[c]) begin

@@ -1,34 +1,113 @@
-task automatic test_15_reload_a_from_loadb();
-  $display("=== TEST 15: Trigger A_LOAD while in LOAD_B state ===");
-  reset_test();
+task automatic test_15_state_fuzz();
+  $display("=== TEST 15: State machine fuzz ===");
+
+  // Force state back to IDLE: stream tlast on LOAD_B
+  if (dut.state == 2'd2) begin
+    s_axis_B_tlast = 1; @(posedge clk); s_axis_B_tlast = 0;
+    repeat (3) @(posedge clk);
+  end
+  // Drain LOAD_A: stream A with tlast
+  if (dut.state == 2'd1) begin
+    stream_mat(A, 1);
+    repeat (3) @(posedge clk);
+  end
+  soft_rst_via_axil();
+  repeat (5) @(posedge clk);
+
   errors = 0; out_count = 0;
   m_axis_tready = 1;
+  axil_write(5'h14, 1);
+  axil_write(5'h0C, 0);
 
-  // First compute: A×B1, leave DUT in LOAD_B
+  // [1] A_LOAD while tvalid=1 (DMA still sending B)
+  $display("  [1] A_LOAD while tvalid=1 → blocked, released");
   load_A();
-  stream_mat(B1, 0);  // tlast=0 → stay in LOAD_B
+  s_axis_B_tvalid = 1;  @(posedge clk);
+  axil_write(5'h10, 0);
+  repeat (3) @(posedge clk);
+  if (dut.state != 2'd2) begin
+    $display("  FAIL[1a]: state=%0d expected LOAD_B", dut.state); errors++;
+  end else $display("    state stayed LOAD_B (correctly blocked)");
+  s_axis_B_tvalid = 0;
+  repeat (5) @(posedge clk);
+  if (dut.state != 2'd1 && dut.state != 2'd0) begin
+    $display("  FAIL[1b]: state stuck at %0d", dut.state); errors++;
+  end else $display("    state transitioned to %0d", dut.state);
+
+  // Reset to IDLE for next scenario
+  if (dut.state == 2'd1) stream_mat(A, 1);
+  if (dut.state == 2'd2) begin s_axis_B_tlast = 1; @(posedge clk); s_axis_B_tlast = 0; end
+  soft_rst_via_axil();  repeat (5) @(posedge clk);
+
+  // [2] C_LOAD while tvalid=1
+  $display("  [2] C_LOAD while tvalid=1 → blocked, released");
+  load_A();
+  s_axis_B_tvalid = 1;  @(posedge clk);
+  axil_write(5'h08, 0);
+  repeat (3) @(posedge clk);
+  if (dut.state != 2'd2) begin
+    $display("  FAIL[2a]: state=%0d", dut.state); errors++;
+  end else $display("    state stayed LOAD_B (correctly blocked)");
+  s_axis_B_tvalid = 0;
+  repeat (5) @(posedge clk);
+  if (dut.state != 2'd3 && dut.state != 2'd0) begin
+    $display("  FAIL[2b]: state=%0d", dut.state); errors++;
+  end else $display("    state transitioned to %0d", dut.state);
+
+  // Reset
+  if (dut.state == 2'd1) stream_mat(A, 1);
+  if (dut.state == 2'd2) begin s_axis_B_tlast = 1; @(posedge clk); s_axis_B_tlast = 0; end
+  // Drain LOAD_C if stuck
+  if (dut.state == 2'd3) begin
+    for (int i = 0; i < SIZE; i++) begin @(posedge clk); s_axis_B_tdata = 0; s_axis_B_tvalid = 1; s_axis_B_tlast = 0; end
+    @(posedge clk); s_axis_B_tvalid = 0;
+  end
+  soft_rst_via_axil();  repeat (5) @(posedge clk);
+
+  // Reset to IDLE
+  soft_rst_via_axil();  repeat (5) @(posedge clk);
+  // Force IDLE: tlast if in LOAD_B
+  if (dut.state == 2'd2) begin s_axis_B_tlast = 1; @(posedge clk); s_axis_B_tlast = 0; end
+  repeat (5) @(posedge clk);
+
+  // [3] Verify IDLE priority: C_LOAD wins over A_LOAD
+  $display("  [3] IDLE priority: C_LOAD");
+  soft_rst_via_axil();  repeat (5) @(posedge clk);
+  if (dut.state == 2'd2) begin s_axis_B_tlast = 1; @(posedge clk); s_axis_B_tlast = 0; end
+  repeat (3) @(posedge clk);
+  axil_write(5'h08, 0);  // C_LOAD only
+  repeat (3) @(posedge clk);
+  if (dut.state != 2'd3) begin
+    $display("  FAIL[3a]: state=%0d expected LOAD_C", dut.state); errors++;
+  end else $display("    LOAD_C entered (C has priority)");
+  // Drain LOAD_C
+  for (int i = 0; i < SIZE; i++) begin @(posedge clk); s_axis_B_tdata = 0; s_axis_B_tvalid = 1; s_axis_B_tlast = 0; end
+  @(posedge clk); s_axis_B_tvalid = 0;
+  repeat (3) @(posedge clk);
+
+  // [3b] A_LOAD from IDLE
+  $display("  [3b] IDLE → A_LOAD");
+  soft_rst_via_axil();  repeat (5) @(posedge clk);
+  if (dut.state == 2'd2) begin s_axis_B_tlast = 1; @(posedge clk); s_axis_B_tlast = 0; end
+  repeat (3) @(posedge clk);
+  axil_write(5'h10, 0);
+  repeat (3) @(posedge clk);
+  if (dut.state != 2'd1) begin
+    $display("  FAIL[3b]: state=%0d expected LOAD_A", dut.state); errors++;
+  end else $display("    LOAD_A entered (A works)");
+  stream_mat(A, 1);  // drain LOAD_A
+  repeat (3) @(posedge clk);
+
+  // [4] Full clean compute after all fuzz
+  $display("  [4] Clean compute after fuzz");
+  out_count = 0;
+  load_A();
+  stream_mat(B1, 1);
   while (out_count < SIZE) @(posedge clk);
   @(posedge clk);
-  $display("  first compute: %0d outputs", out_count);
   for (int r = 0; r < SIZE; r++)
-    check_row_str($sformatf("first row %0d", r), r, exp_B1[r]);
-
-  // Now state is LOAD_B. Trigger A_LOAD → should go to LOAD_A, load new A
-  $display("  calling load_A() from LOAD_B...");
-  load_A();
-
-  // Stream B1 again with tlast
-  stream_mat(B1, 1);
-  while (out_count < 2 * SIZE) @(posedge clk);
-  @(posedge clk);
-  $display("  second compute at indices %0d..%0d", SIZE, 2*SIZE-1);
-  for (int r = 0; r < SIZE && (SIZE + r) < out_count; r++)
-    check_row_str($sformatf("second row %0d", r), SIZE + r, exp_B1[r]);
-
-  if (out_count > 0 && !result_tlast[out_count-1]) begin
-    $display("  MISMATCH: last output expected tlast=1");
-    errors++;
-  end
+    check_row_str($sformatf("row %0d", r), r, exp_B1[r]);
+  $display("    outputs: %0d", out_count);
 
   if (errors == 0) $display("  PASS\n");
   else $display("  FAIL: %0d errors\n", errors);

@@ -133,7 +133,7 @@ module sa_wrapper_axi_ctrl_tb;
     test_12_ring_accumulation();
     test_13_c_matrix();
     test_14_negative();
-    test_15_reload_a_from_loadb();
+    test_15_state_fuzz();
 
     // ═════════════════════════════════════════════════════════════════════
     // Summary
