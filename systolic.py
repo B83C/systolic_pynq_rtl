@@ -28,8 +28,8 @@ class SystolicArray:
     REG_A_LOOP_START = 0x18  # RW  A ring start index
     REG_A_LOOP_END = 0x1C  # RW  A ring end index
     REG_C_LOOP_START = 0x20  # RW  C ring start index
-    REG_C_LOOP_END  = 0x24   # RW  C ring end index
-    REG_RST_INDEX   = 0x2C   # WO  soft-reset indices and state
+    REG_C_LOOP_END = 0x24  # RW  C ring end index
+    REG_RST_INDEX = 0x2C  # WO  soft-reset indices and state
 
     # State enum (from defs.svh)
     STATE_IDLE = 0
@@ -44,8 +44,8 @@ class SystolicArray:
         size=8,
         dwi=8,
         dwo=32,
-        a_depth=4,
-        c_depth=4,
+        a_depth=8,
+        c_depth=8,
     ):
         self.size = size
         self.dwi = dwi
@@ -56,8 +56,8 @@ class SystolicArray:
         self._output_words_per_beat = self.size * self.dwo // 32
 
         if bitstream is not None:
-            self.ol = Overlay(bitstream)
-            self.dma = self.ol.axi_dma_0  # MM2S → input, S2MM ← output
+            self.ol = Overlay(bitstream, download=False)
+            self.dma = self.ol.axi_dma_0
         else:
             self.ol = None
             self.dma = None
