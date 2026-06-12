@@ -83,7 +83,7 @@ module sa_wrapper_axi_ctrl_sv #(
 
   // AXI-Lite registers (6-bit addresses, 0x00..0x3F)
   // 0x00  CTRL:         [0]=state (RO)
-  // 0x04  STATUS:       [0]=b_underflow (RO, clear-on-read)
+  // 0x04  STATUS:       [0]=b_underflow, [1]=s_axis_B_tvalid, [2]=can_output (RO, clear-on-read for bit0)
   // 0x08  C_LOAD:       write to trigger C_LOAD
   // 0x0C  FB_CNT:       group accumulation counter
   // 0x10  A_LOAD:       write to trigger A_LOAD
@@ -209,7 +209,7 @@ module sa_wrapper_axi_ctrl_sv #(
         case (s_axil_araddr)
           6'h00:   s_axil_rdata <= state;
           6'h04: begin
-            s_axil_rdata <= {31'h0, b_underflow};
+            s_axil_rdata <= {29'h0, can_output, s_axis_B_tvalid, b_underflow};
             b_underflow  <= 0;
           end
           6'h0C:   s_axil_rdata <= {24'h0, acc_cnt};
