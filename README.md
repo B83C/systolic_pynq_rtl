@@ -79,11 +79,26 @@ result = sa.compute_acc(A, [B1, B2, B3], fb_cnt=2)
 
 ## Deployment (g7-station → PYNQ)
 
-```sh
-# On g7-station: push RTL
-cd ~/git/systolic && git pull
+### Power-cycle the board
 
-# Vivado rebuild
+The board is on a networked ESPHome switch:
+
+```sh
+# Power off
+curl -s -X POST -H "Content-Type: application/json" -d '{}' \
+  "https://radxa-cubie-a5e.shark-anoles.ts.net/switch/Misc%232/turn_off"
+sleep 8
+# Power on
+curl -s -X POST -H "Content-Type: application/json" -d '{}' \
+  "https://radxa-cubie-a5e.shark-anoles.ts.net/switch/Misc%232/turn_on"
+```
+
+Wait ~80s for the board to fully boot (SSH port 2222).
+
+### Vivado rebuild (g7-station)
+
+```sh
+cd ~/git/systolic && git pull
 cd ~/vivado/test_systolic
 vivado -mode batch -source /dev/stdin <<'EOF'
 open_project test_systolic.xpr
@@ -95,16 +110,23 @@ launch_runs impl_1 -to_step write_bitstream -jobs 8
 wait_on_run impl_1
 exit
 EOF
-
-# Upload to PYNQ
 cd ~/git/systolic && just upload 3
+```
 
-# Deploy
+### Deploy to PYNQ
+
+```sh
 ssh pynq 'echo xilinx | sudo -S mkdir -p /home/xilinx/jupyter_notebooks/sa_test_axis'
 scp systolic.bit systolic.hwh systolic.py \
   pynq:/home/xilinx/jupyter_notebooks/sa_test_axis/
-
-# Test
-ssh pynq 'cd /home/xilinx/jupyter_notebooks/sa_test_axis && \
-  sudo -i python3 -c "from systolic import SystolicArray; SystolicArray(None, 0x40000000).test_all()"'
 ```
+
+### Run self-test
+
+```sh
+ssh pynq 'cd /home/xilinx/jupyter_notebooks/sa_test_axis && \
+  sudo -i python3 -c "from systolic import SystolicArray; SystolicArray(None, 0x43C00000).test_all()"'
+```
+
+**Note:** The bitstream must match the RTL in this repo.  After RTL port/register
+changes, rebuild on g7-station before deploying.
