@@ -267,8 +267,7 @@ module sa_wrapper_axi_ctrl_sv #(
   always @(posedge clk, negedge rst_n) begin
     if (!rst_n) begin
       a_ring_internal <= '{default: '0};
-    end
-    begin
+    end else begin
       for (int j = 0; j < SIZE; j++) begin
         for (int k = 0; k < SIZE; k++) begin
           if (advance) begin
