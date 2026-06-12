@@ -62,6 +62,7 @@ module sa_wrapper_axi_ctrl_tb;
   `include "tb/tb_test_12.svh"
   `include "tb/tb_test_13.svh"
   `include "tb/tb_test_14.svh"
+  `include "tb/tb_test_15.svh"
 
   // output monitor — always-on capture
   always @(posedge clk)
@@ -131,7 +132,8 @@ module sa_wrapper_axi_ctrl_tb;
     test_11_ring_multi_a();
     test_12_ring_accumulation();
     test_13_c_matrix();
-    test_14_negative();  // TODO: c_rd_ptr advance timing debug
+    test_14_negative();
+    test_15_reload_a_from_loadb();
 
     // ═════════════════════════════════════════════════════════════════════
     // Summary
