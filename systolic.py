@@ -44,14 +44,12 @@ class SystolicArray:
         size=8,
         dwi=8,
         dwo=32,
-        a_depth=8,
-        c_depth=8,
+        a_depth=None,
+        c_depth=None,
     ):
         self.size = size
         self.dwi = dwi
         self.dwo = dwo
-        self.a_depth = a_depth
-        self.c_depth = c_depth
         self._input_words_per_beat = self.size * self.dwi // 32
         self._output_words_per_beat = self.size * self.dwo // 32
 
@@ -63,6 +61,17 @@ class SystolicArray:
             self.dma = None
 
         self.mmio = MMIO(ctrl_base_addr, 0x1000)
+
+        # Probe actual ring depth from hardware register width
+        self.a_depth = self._probe_depth(0x1C, a_depth or 8)
+        self.c_depth = self._probe_depth(0x24, c_depth or 8)
+
+    def _probe_depth(self, addr, fallback):
+        """Determine ring depth by writing all-ones and reading back."""
+        self.mmio.write(addr, 0xFFFFFFFF)
+        rv = self.mmio.read(addr)
+        bits = rv.bit_length()
+        return 1 << bits if bits > 0 else fallback
 
     # ------------------------------------------------------------------
     #  Low-level register I/O
