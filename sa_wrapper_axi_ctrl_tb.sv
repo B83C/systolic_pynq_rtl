@@ -63,6 +63,7 @@ module sa_wrapper_axi_ctrl_tb;
   `include "tb/tb_test_13.svh"
   `include "tb/tb_test_14.svh"
   `include "tb/tb_test_15.svh"
+  `include "tb/tb_test_16.svh"
 
   // output monitor — always-on capture
   always @(posedge clk)
@@ -134,6 +135,7 @@ module sa_wrapper_axi_ctrl_tb;
     test_13_c_matrix();
     test_14_negative();
     test_15_state_fuzz();
+    test_16_softrst_in_loadc();
 
     // ═════════════════════════════════════════════════════════════════════
     // Summary

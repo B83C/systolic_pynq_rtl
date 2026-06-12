@@ -107,7 +107,9 @@ module sa_wrapper_axi_ctrl_sv #(
 
   assign idle = state == IDLE;
 
-  wire axil_wr_en = s_axil_awvalid && s_axil_wvalid && !s_axil_bvalid && (state == IDLE || state == LOAD_B);
+  wire axil_wr_en = s_axil_awvalid && s_axil_wvalid && !s_axil_bvalid
+                     && (state == IDLE || state == LOAD_B
+                         || state == LOAD_A || state == LOAD_C);
   wire axil_rd_en = s_axil_arvalid && !s_axil_rvalid;
 
   assign s_axil_awready = axil_wr_en;
@@ -158,6 +160,8 @@ module sa_wrapper_axi_ctrl_sv #(
   always @(posedge clk, negedge rst_n) begin
     if (!rst_n) begin
       state <= IDLE;
+    end else if (soft_rst) begin
+      state <= IDLE;
     end else begin
       state <= state_nxt;
     end
@@ -189,7 +193,7 @@ module sa_wrapper_axi_ctrl_sv #(
           6'h1C:   a_loop_end <= s_axil_wdata[A_RING_ADDR_W-1:0];
           6'h20:   c_loop_start <= s_axil_wdata[C_RING_ADDR_W-1:0];
           6'h24:   c_loop_end <= s_axil_wdata[C_RING_ADDR_W-1:0];
-          6'h2C:   ; // RST_INDEX handled below
+          6'h2C:   ;  // RST_INDEX handled below
           default: ;
         endcase
         s_axil_bvalid <= 1;
@@ -282,8 +286,6 @@ module sa_wrapper_axi_ctrl_sv #(
 
   always @(posedge clk, negedge rst_n) begin
     if (!rst_n) begin
-      a_ring_internal <= '{default: '0};
-    end else if (soft_rst) begin
       a_ring_internal <= '{default: '0};
     end else begin
       for (int j = 0; j < SIZE; j++) begin
