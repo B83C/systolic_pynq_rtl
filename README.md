@@ -6,193 +6,84 @@
 |---|---|---|
 | `SA.sv` | Core systolic array (user-owned, do not modify) |
 | `pe.sv` | Multiply-accumulate PE: `sum <= a*b + c_in` on `tick` |
-| `sa_wrapper_axi_ctrl_sv.sv` | AXI-Stream + AXI-Lite wrapper (SystemVerilog impl, do not use in Vivado BD) |
-| `sa_wrapper_axi_ctrl.v` | Pure-Verilog BD wrapper for Vivado block design (instantiates `_sv`) |
-| `sa_wrapper_axi_test.sv` | Older AXI-Stream wrapper (no AXI-Lite) |
-| `sa_wrapper_axi_test_tb.sv` | Self-checking testbench (single stream) |
-| `sa_wrapper_axi_test_multi_tb.sv` | Multi-stream + sync testbench |
-| `systolic.py` | PYNQ Python driver (load from Jupyter notebook) |
-| `justfile` | `just test <tb>` builds + runs with Verilator |
+| `sa_wrapper_axi_ctrl_sv.sv` | AXI-Stream + AXI-Lite wrapper (main RTL) |
+| `counter.sv` | Up-counter with dynamic max, used for FB_CNT accumulation |
+| `systolic.py` | PYNQ Python driver |
+| `tb/` | Split testbench includes (tb_common, tb_test_01 … tb_test_13) |
+| `justfile` | `just test-ctrl` builds + runs Verilator |
 
-## SA Architecture
+## Register map (AXI-Lite, 6-bit addresses)
 
-SIZE×SIZE grid of PEs. Each PE reads:
+| Addr | Name | Access | Description |
+|------|------|--------|-------------|
+| 0x00 | STATE | RO | `[1:0]` state (0=IDLE, 1=LOAD_A, 2=LOAD_B, 3=LOAD_C) |
+| 0x04 | STATUS | RO | `[0]` b_underflow (clear-on-read) |
+| 0x08 | C_LOAD | WO | write to trigger C ring loading |
+| 0x0C | FB_CNT | RW | `[7:0]` accumulation group size (0=off) |
+| 0x10 | A_LOAD | WO | write to trigger A ring loading |
+| 0x14 | ACC_OUT | RW | `[0]` enable output during accumulation |
+| 0x18 | A_LOOP_START | RW | A ring start index |
+| 0x1C | A_LOOP_END | RW | A ring end index |
+| 0x20 | C_LOOP_START | RW | C ring start index |
+| 0x24 | C_LOOP_END | RW | C ring end index |
 
-```
-a = a_inner_loop[i][i]   ← diagonal of circular shift register (same for all PEs in row i)
-b = b_inner[i][j]        ← column j of stationary B row i
-c_in = partial_sum[i][j] ← accumulated sum from PE[i-1][j]
-sum = a * b + c_in
-```
+Writes are only accepted when state is IDLE or LOAD_B. The `idle` output port signals state == IDLE.
 
-### `a_inner_loop` — programmable recirculation
-
-On every `valid` posedge:
-1. Position 0 loads new data or recirculates: `a_inner_loop[i][0] <= load_a ? a_row[i] : a_inner_loop[i][loop_len_a - 1]`
-2. Positions 1…MAX_LOOP-1 shift right: `a_inner_loop[i][j+1] <= a_inner_loop[i][j]`
-3. If `load_b && current_row[i]`: `b_inner[i] <= b_row`
-
-The A recirculation depth is **programmable** via `loop_len_a` (default = SIZE, max = 3×SIZE). An A element returns to the same PE after `loop_len_a` cycles.
-
-Because `a = a_inner_loop[i][i]` (diagonal), PE row `i` sees the value that was loaded **i cycles ago**. The pipeline fills after **SIZE+1** valid cycles (not SIZE), because the bottom‑row diagonal element trails by one cycle.
-
-### `loop_len_a` usage scenarios
-
-| `loop_len_a` | Behaviour |
-|---|---|
-| `SIZE` (k=1) | Original — A recirculates every SIZE cycles |
-| `2×SIZE` (k=2) | Double-length recirculation |
-| `3×SIZE` (k=3) | Triple-length recirculation (maximum) |
-
-Set via AXI-Lite register 0x08 before starting.
-
-### What it computes
-
-With A columns fed as `a_row[k]` at cycle k: `result_row[j] = Σᵢ A[i][t−i] · B[i][j]` (skewed anti‑diagonal accumulation, **not** standard A×B).
-
-## Wrapper: `sa_wrapper_axi_ctrl` (AXI-Lite + AXI-Stream)
-
-Recommended top-level for Vivado integration. Includes all features of
-`sa_wrapper_axi_test` plus a programmable AXI4-Lite control interface.
-
-### Block design usage
-
-1. Add `sa_wrapper_axi_ctrl.v` to your Vivado block design as a module.
-2. Add `sa_wrapper_axi_ctrl_sv.sv`, `SA.sv`, `pe.sv` as design sources.
-3. Connect:
-   - `s_axis_A`, `s_axis_B` → AXI DMA MM2S channels
-   - `m_axis`            → AXI DMA S2MM channel
-   - `s_axil_*`          → Zynq PS M_AXI_GP via AXI Interconnect
-
-### Register map (AXI-Lite, 4‑byte aligned)
-
-| Addr | Name   | Access | Description |
-|------|--------|--------|-------------|
-| 0x00 | CTRL   | R/W    | `[0]` start (SW write 1), `[1]` done (RO), `[2]` running (RO) |
-| 0x04 | MODE   | R/W    | `[0]` a_reuse, `[2]` b_reuse (1 = reuse, 0 = stream) |
-| 0x08 | LOOP   | R/W    | `[7:0]` loop_len_a (1 … 3×SIZE, default = SIZE) |
-
-### Control flow
+## Control flow
 
 ```
-1. Write 0x08  ← loop_len_a          (optional, default = SIZE)
-2. Write 0x04  ← mode                 (optional, 0 = normal streaming)
-3. Start DMA:  A stream, B stream
-4. Write 0x00  ← 1                    (start bit)
-5. Wait for SA done (poll 0x00[1])    (or wait for DMA S2MM completion)
-6. Read DMA output buffer
+1. Configure registers (FB_CNT, ACC_OUT, ring bounds).  Must be IDLE.
+2. Trigger A_LOAD (0x10).  State → LOAD_A.  Stream A rows on s_axis_B.
+3. Optional: trigger C_LOAD (0x08).  State → LOAD_C.  Stream C values.
+4. Stream B rows.  State → LOAD_B.  Computation starts on first B row.
+5. Output appears on m_axis.  Wait for tlast or idle.
 ```
 
-The TLAST handshake also works: assert `tlast` on the last A (or B) beat;
-the wrapper drains automatically when `tlast` is seen.
+State machine:
+- IDLE → LOAD_C (c_load_pending, priority) → IDLE
+- IDLE → LOAD_A (a_load_pending) → IDLE
+- IDLE → LOAD_B (default)
+- LOAD_B → LOAD_C (c_load_pending && !operate)
+- LOAD_B → LOAD_A (a_load_pending && !operate)
+- LOAD_B → IDLE (s_axis_B_tlast)
 
-### Parameters
-
-| Parameter | Default | Description |
-|---|---|---|
-| `SIZE` | 4 | Array dimension |
-| `DATA_WIDTH_IN` | 8 | Input element width (bits) |
-| `DATA_WIDTH_OUT` | 32 | Output element width (bits) |
-| `MAX_LOOP` | 3×SIZE | Internal A recirculation buffer depth |
-
-### Timing (both streaming, no reuse)
-
-| Phase | Cycles | Activity |
-|---|---|---|
-| Fill   | SIZE+1 | load_a, load_b, current_row rotates |
-| Compute | N−1  | A streaming; B frozen |
-| Drain  | SIZE+1 | zeros injected, pipeline flushed |
-| Total  | N + 2×SIZE + 1 | |
-
-**Output beats:** The drain phase produces SIZE+1 valid cycles. The first drain output
-beat is garbage (pipeline not yet flushed). To match the DMA's expected transfer
-length (= N rows), the `output_available` logic skips the first drain beat:
-`output_available = (state == DRAIN) ? !first_drain : (beat_cnt >= SIZE)`.
-This ensures exactly N output beats (N ≤ SIZE).
-
-## Running
+## Running Verilator tests
 
 ```sh
-# Single stream test
-just test sa_wrapper_axi_test_tb
-
-# Multi-stream + synchronization test
-just test sa_wrapper_axi_test_multi_tb
+just test-ctrl
 ```
 
-Expected single‑stream output:
-```
-OUT[23] = [160, 153, 146, 139]
-OUT[25] = [173, 164, 155, 146]
-OUT[27] = [186, 175, 164, 153]
-OUT[29] = [199, 186, 173, 160] LAST
-PASS: all 4 outputs match
-```
+Tests 1-13 cover: single multiply, back-to-back, accumulation, eye, consecutive groups, undersized, output back-pressure, continuous streaming, random back-pressure, A ring buffer, A+C ring accumulation, C matrix.
 
-## Testbench structure
-
-The `send` task drives both A and B streams simultaneously with the same `tlast`. For synchronization testing, the multi‑stream testbench drives them independently to verify that:
-- Ready stays low when only one stream is valid
-- Data is only consumed when both are valid
-- Backpressure stalls the SA when the output channel is blocked
-- Multiple sequential streams work (with or without reset between them)
-
-## PYNQ control (Jupyter notebook)
+## PYNQ driver
 
 ```python
 from systolic import SystolicArray
 import numpy as np
 
-sa = SystolicArray('systolic.bit', ctrl_base_addr=0x43C00000)
+sa = SystolicArray('systolic.bit', ctrl_base_addr=0x40000000, size=8)
 
-A = np.array([[1, 2, 3, 4],
-              [5, 6, 7, 8],
-              [9, 0, 1, 2],
-              [3, 4, 5, 6]], dtype=np.uint8)
+A = np.array([...], dtype=np.uint8)   # (N, SIZE)
+B = np.array([...], dtype=np.uint8)   # (N, SIZE)
+C = np.array([100, 200, 300, 400], dtype=np.uint32)  # optional
 
-B = np.array([[1, 0, 0, 0],
-              [0, 1, 0, 0],
-              [0, 0, 1, 0],
-              [0, 0, 0, 1]], dtype=np.uint8)
+# Simple compute
+result = sa.compute(A, B)
 
-result = sa.compute(A, B)   # normal streaming
-result_with_reuse = sa.compute(A, B, a_reuse=True, loop_len=12)
+# With C matrix
+result = sa.compute(A, B, C=C)
+
+# Accumulation (multiple B against one A)
+result = sa.compute_acc(A, [B1, B2, B3], fb_cnt=2)
 ```
 
-### Vivado BD requirements
-
-| IP | Role | Connection |
-|---|---|---|
-| `sa_wrapper_axi_ctrl.v` | SA top (add as BD module) | — |
-| `axi_dma_0` | A stream MM2S + result S2MM | `s_axis_A`, `m_axis` |
-| `axi_dma_1` | B stream MM2S | `s_axis_B` |
-| `axi_interconnect` | PS ↔ AXI-Lite / DMA | M_AXI_GP0 → control + DMA regs |
-| `clk_wiz` (optional) | Clock generation | — |
-
-### Register quick reference
-
-```python
-from pynq import MMIO
-
-mmio = MMIO(0x43C00000, 0x1000)
-
-mmio.write(0x08, 12)   # loop_len_a = 12
-mmio.write(0x04, 0x01) # a_reuse = 1
-mmio.write(0x00, 0x01) # start
-
-# poll until done
-while not (mmio.read(0x00) & 0x2):
-    pass
-```
-
-## Deployment workflow (g7-station → PYNQ)
-
-### Quick batch rebuild & upload (g7-station)
-
-SSH to `g7-station` and:
+## Deployment (g7-station → PYNQ)
 
 ```sh
+# On g7-station: push RTL
 cd ~/git/systolic && git pull
+
+# Vivado rebuild
 cd ~/vivado/test_systolic
 vivado -mode batch -source /dev/stdin <<'EOF'
 open_project test_systolic.xpr
@@ -204,62 +95,16 @@ launch_runs impl_1 -to_step write_bitstream -jobs 8
 wait_on_run impl_1
 exit
 EOF
+
+# Upload to PYNQ
 cd ~/git/systolic && just upload 3
-```
 
-The `just upload 3` target SCPs:
-- `test_systolic.gen/sources_1/bd/design_3/hw_handoff/design_3.hwh`   → `pynq:~/…/systolic.hwh`
-- `test_systolic.runs/impl_1/design_3_wrapper.bit`                    → `pynq:~/…/systolic.bit`
-- `git/systolic/systolic.py`                                           → `pynq:~/…/systolic.py`
-
-### Power-cycling the PYNQ board
-
-The board is on a networked ESPHome switch at `qswitch_test.local`. Use `curl`:
-
-```sh
-# Power off
-curl -s -X POST -H "Content-Type: application/json" -d '{}' \
-  "http://qswitch_test.local/switch/Misc%232/turn_off"
-
-# Wait 8 seconds, then power on
-sleep 8
-curl -s -X POST -H "Content-Type: application/json" -d '{}' \
-  "http://qswitch_test.local/switch/Misc%232/turn_on"
-```
-
-Wait ~80s for the board to fully boot (SSH port 2222).
-
-### Deploy to PYNQ
-
-```sh
+# Deploy
 ssh pynq 'echo xilinx | sudo -S mkdir -p /home/xilinx/jupyter_notebooks/sa_test_axis'
-scp systolic.bit systolic.hwh systolic.py test_systolic.ipynb \
+scp systolic.bit systolic.hwh systolic.py \
   pynq:/home/xilinx/jupyter_notebooks/sa_test_axis/
+
+# Test
+ssh pynq 'cd /home/xilinx/jupyter_notebooks/sa_test_axis && \
+  sudo -i python3 -c "from systolic import SystolicArray; SystolicArray(None, 0x40000000).test_all()"'
 ```
-
-### Run on PYNQ (SSH)
-
-```sh
-ssh pynq
-sudo -i
-source /etc/profile.d/pynq_venv.sh
-source /etc/profile.d/xrt_setup.sh
-cd /home/xilinx/jupyter_notebooks/sa_test_axis
-python3 -c "from systolic import SystolicArray; SystolicArray().test_all()"
-```
-
-### Run from Jupyter
-
-Open `http://<pynq-ip>:9090` in a browser, navigate to `sa_test_axis/test_systolic.ipynb`, and run all cells.
-## Notes for agent use
-
-- The systolic array core is `SA.sv` — the wrapper and BD files are for integration
-- **Do not modify `SA.sv`** — it is user‑owned
-- The wrapper (`sa_wrapper_axi_ctrl_sv.sv`) is the file to modify for protocol changes
-- Adding self‑checking to a new testbench: unpack `m_axis_tdata` into `result_row[0..SIZE-1]` and compare with expected values computed by tracing the SA's diagonal‑shift‑register behavior
-- For back‑to‑back streaming without reset, BE AWARE that `beat_cnt` does not reset and `load_b` stays low after the first SIZE beats, so new B rows are NOT loaded — the old B matrix persists
-- **`AXI_OUT_WIDTH = SIZE × DATA_WIDTH_OUT` must match the DMA S2MM `c_s_axis_s2mm_tdata_width`** (256 for BD design_3). With SIZE=8 and DATA_WIDTH_OUT=32: 8×32 = 256 ✓.
-- **DMA S2MM internal error 0x5011** typically means TLAST/data length mismatch. The SA must produce exactly as many output beats as the DMA expects. The drain fix (skip first drain beat) ensures this.
-- **Simple DMA (c_include_sg=0):** after each transfer completes, the channel auto-halts. Do not call `channel.wait()` after the transfer finishes — use manual idle-poll of DMASR instead.
-- **PYNQ XRT:** after a DMA error, the device may become unresponsive. Reset with `xbutil reset -d 0 <<< "Y"` before retrying.
-- **`systolic.py` driver parameter defaults must match the Vivado BD configuration.** The BD sets `SIZE=8`; the SV default `SIZE=4` is just a default and is overridden by the BD.
