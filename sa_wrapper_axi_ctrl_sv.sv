@@ -100,6 +100,8 @@ module sa_wrapper_axi_ctrl_sv #(
   reg a_load_pending;
   reg c_load_pending;
   reg soft_rst;
+  reg a_loop_active;
+  reg c_loop_active;
   reg [A_RING_ADDR_W-1:0] a_loop_start;
   reg [A_RING_ADDR_W-1:0] a_loop_end;
   reg [C_RING_ADDR_W-1:0] c_loop_start;
@@ -130,14 +132,14 @@ module sa_wrapper_axi_ctrl_sv #(
         end
       end
       LOAD_A: begin
-        if (a_rd_ptr == a_loop_end || (state == LOAD_A && s_axis_B_tlast)) begin
+        if ((a_rd_ptr == a_loop_end && a_loop_active) || (state == LOAD_A && s_axis_B_tlast)) begin
           state_nxt = IDLE;
         end else begin
           state_nxt = LOAD_A;
         end
       end
       LOAD_C: begin
-        if (c_rd_ptr == c_loop_end || (state == LOAD_C && s_axis_B_tlast)) begin
+        if ((c_rd_ptr == c_loop_end && c_loop_active) || (state == LOAD_C && s_axis_B_tlast)) begin
           state_nxt = IDLE;
         end else begin
           state_nxt = LOAD_C;
@@ -160,10 +162,21 @@ module sa_wrapper_axi_ctrl_sv #(
   always @(posedge clk, negedge rst_n) begin
     if (!rst_n) begin
       state <= IDLE;
+      a_loop_active <= 0;
+      c_loop_active <= 0;
     end else if (soft_rst) begin
       state <= IDLE;
+      a_loop_active <= 0;
+      c_loop_active <= 0;
     end else begin
       state <= state_nxt;
+      if (state_nxt != state) begin
+        a_loop_active <= 0;
+        c_loop_active <= 0;
+      end else begin
+        if (a_consume) a_loop_active <= 1;
+        if (c_consume) c_loop_active <= 1;
+      end
     end
   end
 

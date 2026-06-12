@@ -112,10 +112,14 @@ class SystolicArray:
         self.reg_write(self.REG_A_LOOP_START, a_loop_start)
         if a_loop_end is None:
             a_loop_end = self.a_depth - 1
+        else:
+            a_loop_end = min(a_loop_end, self.a_depth - 1)
         self.reg_write(self.REG_A_LOOP_END, a_loop_end)
         self.reg_write(self.REG_C_LOOP_START, c_loop_start)
         if c_loop_end is None:
             c_loop_end = self.c_depth - 1
+        else:
+            c_loop_end = min(c_loop_end, self.c_depth - 1)
         self.reg_write(self.REG_C_LOOP_END, c_loop_end)
 
     # ------------------------------------------------------------------
