@@ -1,6 +1,8 @@
 from pynq import Overlay, allocate, MMIO
 import numpy as np
 import time
+import os
+import subprocess
 
 
 class SystolicArray:
@@ -53,23 +55,55 @@ class SystolicArray:
         self._input_words_per_beat = self.size * self.dwi // 32
         self._output_words_per_beat = self.size * self.dwo // 32
 
+        self.mmio = MMIO(ctrl_base_addr, 0x1000)
+
+        # Check if our design is loaded; if not, program the FPGA
         if bitstream is not None:
+            if not self._check_design_present(ctrl_base_addr):
+                self._load_fpga(bitstream)
+
             self.ol = Overlay(bitstream, download=False)
             self.dma = self.ol.axi_dma_0
         else:
             self.ol = None
             self.dma = None
 
-        self.mmio = MMIO(ctrl_base_addr, 0x1000)
-
         # Probe actual ring depth from hardware register width
         self.a_depth = self._probe_depth(0x1C, a_depth or 8)
         self.c_depth = self._probe_depth(0x24, c_depth or 8)
 
-    def program(self, bitstream):
-        """Download bitstream to FPGA. Call once after power cycle."""
-        ol = Overlay(bitstream, download=True)
-        self.dma = ol.axi_dma_0
+    @staticmethod
+    def _check_design_present(base_addr):
+        """Check if SA design is loaded by reading the state register."""
+        try:
+            mmio = MMIO(base_addr, 0x1000)
+            v = mmio.read(0x00)
+            # Valid SA returns a small state value (0-3) in bits[1:0];
+            # bus error returns 0xB8000000 (DECERR)
+            return (v & 0x3) in (0, 1, 2, 3) and (v >> 8) == 0
+        except Exception:
+            return False
+
+    def _load_fpga(self, bitstream):
+        """Program FPGA via fpga-mgr: convert .bit → raw LE → firmware."""
+        import struct as _struct
+        with open(bitstream, "rb") as f:
+            data = f.read()
+        for i in range(len(data)):
+            if data[i:i+4] == b"\xaa\x99\x55\x66":
+                raw_be = data[i-4:]
+                break
+        raw_le = bytearray()
+        for i in range(0, len(raw_be), 4):
+            w = _struct.unpack(">I", raw_be[i:i+4])[0]
+            raw_le.extend(_struct.pack("<I", w))
+        fw_path = "/lib/firmware/systolic.bin"
+        with open("/tmp/systolic_raw.bin", "wb") as f:
+            f.write(raw_le)
+        subprocess.run(f"cp /tmp/systolic_raw.bin {fw_path}", shell=True, timeout=10)
+        subprocess.run(f"echo systolic.bin > /sys/class/fpga_manager/fpga0/firmware",
+                       shell=True, timeout=30)
+        time.sleep(2)
 
     def _probe_depth(self, addr, fallback):
         """Determine ring depth by writing all-ones and reading back."""
