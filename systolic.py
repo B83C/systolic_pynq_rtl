@@ -60,10 +60,9 @@ class SystolicArray:
         # Repoint PYNQ state dir to user-writable location
         self._fix_state_dir()
 
-        # Check if our design is loaded; if not, program the FPGA
+        # Always program the FPGA — reliable, ~3s overhead
         if bitstream is not None:
-            if not self._check_design_present(ctrl_base_addr):
-                self._load_fpga(bitstream)
+            self._load_fpga(bitstream)
 
             self.ol = Overlay(bitstream, download=False)
             self.dma = self.ol.axi_dma_0
