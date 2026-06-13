@@ -46,7 +46,8 @@ module sa_wrapper_axi_ctrl_sv #(
     output wire idle
 );
 
-  logic stop_feedback;
+  logic new_batch;
+  logic feedback_valid;
   state_t state, state_nxt;
 
   localparam ROW_BITS = SIZE > 1 ? $clog2(SIZE) : 1;
@@ -67,7 +68,6 @@ module sa_wrapper_axi_ctrl_sv #(
   wire  c_consume = operate && (state == LOAD_C);
 
   wire  output_stalled = output_going_on && !m_axis_tready;
-  wire  advance = b_consume | (output_going_on && m_axis_tready);
 
   assign s_axis_B_tready = can_output && state != IDLE && !output_stalled;
 
@@ -98,6 +98,7 @@ module sa_wrapper_axi_ctrl_sv #(
 
   reg b_underflow;
   reg [7:0] acc_cnt;
+  wire [7:0] current_acc_count;
   reg a_load_pending;
   reg c_load_pending;
   reg soft_rst;
@@ -107,6 +108,9 @@ module sa_wrapper_axi_ctrl_sv #(
   reg [A_RING_ADDR_W-1:0] a_loop_end;
   reg [C_RING_ADDR_W-1:0] c_loop_start;
   reg [C_RING_ADDR_W-1:0] c_loop_end;
+
+  // We advance when new input comes in, or drain the output when master is ready and multplication is still going on and we do not need to feed back data
+  wire advance = b_consume | (output_going_on && m_axis_tready && new_batch);
 
   assign idle = state == IDLE;
 
@@ -225,7 +229,7 @@ module sa_wrapper_axi_ctrl_sv #(
             b_underflow  <= 0;
           end
           REG_FB_CNT: s_axil_rdata <= {24'h0, acc_cnt};
-          REG_ACC_CNT: s_axil_rdata <= {24'h0, acc_count};
+          REG_ACC_CNT: s_axil_rdata <= {24'h0, current_acc_count};
           REG_A_LOAD: s_axil_rdata <= {31'h0, a_load_pending};
           REG_A_LOOP_START: s_axil_rdata <= {{32 - A_RING_ADDR_W{1'h0}}, a_loop_start};
           REG_A_LOOP_END: s_axil_rdata <= {{32 - A_RING_ADDR_W{1'h0}}, a_loop_end};
@@ -361,7 +365,7 @@ module sa_wrapper_axi_ctrl_sv #(
         c_ring[c_rd_ptr] <= s_axis_B_tdata[DATA_WIDTH_OUT-1:0];
         if (c_rd_ptr == c_loop_end) c_rd_ptr <= c_loop_start;
         else c_rd_ptr <= c_rd_ptr + 1;
-      end else if (stop_feedback && b_consume) begin
+      end else if (new_batch && b_consume) begin
         if (c_rd_ptr == c_loop_end) c_rd_ptr <= c_loop_start;
         else c_rd_ptr <= c_rd_ptr + 1;
       end
@@ -369,7 +373,6 @@ module sa_wrapper_axi_ctrl_sv #(
   end
 
 
-  wire [7:0] acc_count;
 
   counter #(
       .DYN(1),
@@ -379,10 +382,18 @@ module sa_wrapper_axi_ctrl_sv #(
       .en(last_row && b_consume),
       .rst_n(rst_n),
       .dyn_max(acc_cnt),
-      .zero(stop_feedback),
+      .zero(new_batch),
       .ending(),
-      .count(acc_count)
+      .count(current_acc_count)
   );
+
+  always @(posedge clk, negedge rst_n) begin
+    if (!rst_n) begin
+      feedback_valid <= 0;
+    end else begin
+      feedback_valid <= !new_batch;
+    end
+  end
 
   wire [DATA_WIDTH_OUT-1:0] c_row_final[SIZE];
   always @(posedge clk, negedge rst_n) begin
@@ -392,7 +403,7 @@ module sa_wrapper_axi_ctrl_sv #(
       c_row <= '{default: '0};
     end else if (state == LOAD_A || state == LOAD_C) begin
       c_row <= '{default: '0};
-    end else if (advance && stop_feedback) begin
+    end else if (advance && new_batch) begin
       c_row <= '{default: c_ring[c_rd_ptr]};
     end
   end
@@ -400,8 +411,7 @@ module sa_wrapper_axi_ctrl_sv #(
   generate
     for (genvar i = 0; i < SIZE; i++) begin : gen_c_row_final
       assign c_row_final[i] = (state == LOAD_A || state == LOAD_C) ? 0 :
-                               stop_feedback ? c_row[i] :
-                               result_row[i];
+                               feedback_valid ? result_row[i] : c_row[i] ;
     end
   endgenerate
 
@@ -444,7 +454,7 @@ module sa_wrapper_axi_ctrl_sv #(
       output_valid <= 0;
       output_last  <= 0;
     end else begin
-      output_valid <= output_going_on && stop_feedback;
+      output_valid <= output_going_on && new_batch;
       output_last  <= output_is_last && output_idx_oh[SIZE-1];
     end
   end
