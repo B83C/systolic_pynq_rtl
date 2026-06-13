@@ -4,19 +4,6 @@
 // Shared test data, helpers, and tasks for sa_wrapper_axi_ctrl_tb
 // -----------------------------------------------------------------------
 
-// Register address constants (matches defs.svh + wrapper)
-localparam REG_STATE        = 5'h00;
-localparam REG_STATUS       = 5'h04;
-localparam REG_C_LOAD       = 5'h08;
-localparam REG_FB_CNT       = 5'h0C;
-localparam REG_A_LOAD       = 5'h10;
-localparam REG_ACC_OUT      = 5'h14;  // unused in current RTL, kept for compat
-localparam REG_A_LOOP_START = 5'h18;
-localparam REG_A_LOOP_END   = 5'h1C;
-localparam REG_C_LOOP_START = 5'h20;
-localparam REG_C_LOOP_END   = 5'h24;
-localparam REG_RST_INDEX    = 5'h2C;
-
 // Test matrices
 int A[4][4] = '{'{10, 11, 12, 13}, '{11, 12, 13, 14}, '{12, 13, 14, 15}, '{13, 14, 15, 16}};
 int B1[4][4] = '{'{1, 2, 3, 4}, '{5, 6, 7, 8}, '{9, 10, 11, 12}, '{13, 14, 15, 16}};
@@ -109,8 +96,8 @@ task stream_mat_n(input int mat[4][4], input int nrows, input bit last_set = 1);
 endtask
 
 task load_A();
-  axil_write(5'h1C, SIZE - 1);
-  axil_write(5'h10, 0);
+  axil_write(REG_A_LOOP_END, SIZE - 1);
+  axil_write(REG_A_LOAD, 0);
   stream_mat(A);
 endtask
 
@@ -127,7 +114,7 @@ task wait_output_done();
 endtask
 
 task soft_rst_via_axil();
-  axil_write(6'h2C, 0);
+  axil_write(REG_RST_INDEX, 0);
 endtask
 
 task check_row_str(string label, int idx, int expected[4]);

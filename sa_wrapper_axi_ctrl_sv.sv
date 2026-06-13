@@ -196,14 +196,14 @@ module sa_wrapper_axi_ctrl_sv #(
 
       if (axil_wr_en) begin
         case (s_axil_awaddr)
-          6'h0C:   acc_cnt <= s_axil_wdata[7:0];
-          6'h08:   c_load_pending <= 1;
-          6'h10:   a_load_pending <= 1;
-          6'h18:   a_loop_start <= s_axil_wdata[A_RING_ADDR_W-1:0];
-          6'h1C:   a_loop_end <= s_axil_wdata[A_RING_ADDR_W-1:0];
-          6'h20:   c_loop_start <= s_axil_wdata[C_RING_ADDR_W-1:0];
-          6'h24:   c_loop_end <= s_axil_wdata[C_RING_ADDR_W-1:0];
-          6'h2C:   ;  // RST_INDEX handled below
+          REG_FB_CNT:   acc_cnt <= s_axil_wdata[7:0];
+          REG_C_LOAD:   c_load_pending <= 1;
+          REG_A_LOAD:   a_load_pending <= 1;
+          REG_A_LOOP_START: a_loop_start <= s_axil_wdata[A_RING_ADDR_W-1:0];
+          REG_A_LOOP_END:   a_loop_end   <= s_axil_wdata[A_RING_ADDR_W-1:0];
+          REG_C_LOOP_START: c_loop_start <= s_axil_wdata[C_RING_ADDR_W-1:0];
+          REG_C_LOOP_END:   c_loop_end   <= s_axil_wdata[C_RING_ADDR_W-1:0];
+          REG_RST_INDEX: ;  // handled below
           default: ;
         endcase
         s_axil_bvalid <= 1;
@@ -217,17 +217,17 @@ module sa_wrapper_axi_ctrl_sv #(
 
       if (axil_rd_en) begin
         case (s_axil_araddr)
-          6'h00:   s_axil_rdata <= state;
-          6'h04: begin
+          REG_STATE:   s_axil_rdata <= state;
+          REG_STATUS: begin
             s_axil_rdata <= {29'h0, can_output, s_axis_B_tvalid, b_underflow};
             b_underflow  <= 0;
           end
-          6'h0C:   s_axil_rdata <= {24'h0, acc_cnt};
-          6'h10:   s_axil_rdata <= {31'h0, a_load_pending};
-          6'h18:   s_axil_rdata <= {{32 - A_RING_ADDR_W{1'h0}}, a_loop_start};
-          6'h1C:   s_axil_rdata <= {{32 - A_RING_ADDR_W{1'h0}}, a_loop_end};
-          6'h20:   s_axil_rdata <= {{32 - C_RING_ADDR_W{1'h0}}, c_loop_start};
-          6'h24:   s_axil_rdata <= {{32 - C_RING_ADDR_W{1'h0}}, c_loop_end};
+          REG_FB_CNT:   s_axil_rdata <= {24'h0, acc_cnt};
+          REG_A_LOAD:   s_axil_rdata <= {31'h0, a_load_pending};
+          REG_A_LOOP_START: s_axil_rdata <= {{32 - A_RING_ADDR_W{1'h0}}, a_loop_start};
+          REG_A_LOOP_END:   s_axil_rdata <= {{32 - A_RING_ADDR_W{1'h0}}, a_loop_end};
+          REG_C_LOOP_START: s_axil_rdata <= {{32 - C_RING_ADDR_W{1'h0}}, c_loop_start};
+          REG_C_LOOP_END:   s_axil_rdata <= {{32 - C_RING_ADDR_W{1'h0}}, c_loop_end};
           default: s_axil_rdata <= 32'h0;
         endcase
         s_axil_rvalid <= 1;
@@ -242,7 +242,7 @@ module sa_wrapper_axi_ctrl_sv #(
       end
 
       // RST_INDEX: trigger soft reset pulse
-      if (axil_wr_en && (s_axil_awaddr == 6'h2C)) begin
+      if (axil_wr_en && (s_axil_awaddr == REG_RST_INDEX)) begin
         soft_rst <= 1;
       end else begin
         soft_rst <= 0;
