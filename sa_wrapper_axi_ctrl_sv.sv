@@ -380,7 +380,7 @@ module sa_wrapper_axi_ctrl_sv #(
   ) c_cntr (
       .clk(clk),
       .en(last_row && b_consume),
-      .rst_n(rst_n),
+      .rst_n(rst_n && !soft_rst),
       .dyn_max(acc_cnt),
       .zero(new_batch),
       .ending(),
@@ -388,7 +388,7 @@ module sa_wrapper_axi_ctrl_sv #(
   );
 
   always @(posedge clk, negedge rst_n) begin
-    if (!rst_n) begin
+    if (!rst_n || soft_rst) begin
       feedback_valid <= 0;
     end else begin
       feedback_valid <= !new_batch;

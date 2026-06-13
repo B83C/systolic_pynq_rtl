@@ -134,24 +134,24 @@ module sa_wrapper_axi_ctrl_tb;
       exp_3way[r][c] = exp_B1[r][c] + exp_B2[r][c] + exp_eye[r][c];
     end
 
-    // test_01_single_multiply();
-    // test_02_backtoback();
+    test_01_single_multiply();
+    test_02_backtoback();
     test_03_accumulation_accout0();
     test_04_accumulation_accout1();
-    // test_05_eye();
-    // test_06_consecutive_groups();
-    // test_07_undersized();
-    // test_08_output_pressure();
-    // test_09_continuous_streaming();
-    // test_10_random_backpressure();
-    // test_11_ring_multi_a();
-    // test_12_ring_accumulation();
-    // test_13_c_matrix();
-    // test_14_negative();
-    // test_15_state_fuzz();
-    // test_16_softrst_in_loadc();
-    // test_17_deadlock_stress();
-    // test_18_single_element_ring();
+    test_05_eye();
+    test_06_consecutive_groups();
+    test_07_undersized();
+    test_08_output_pressure();
+    test_09_continuous_streaming();
+    test_10_random_backpressure();
+    test_11_ring_multi_a();
+    test_12_ring_accumulation();
+    test_13_c_matrix();
+    test_14_negative();
+    test_15_state_fuzz();
+    test_16_softrst_in_loadc();
+    test_17_deadlock_stress();
+    test_18_single_element_ring();
 
     // ═════════════════════════════════════════════════════════════════════
     // Summary

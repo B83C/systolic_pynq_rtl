@@ -4,15 +4,16 @@
 task automatic test_14_negative();
   $display("=== TEST 14: Signed multiply — negative B ===");
   reset_test();
-  errors = 0; out_count = 0;
+  errors = 0;
+  out_count = 0;
   m_axis_tready = 1;
   axil_write(REG_A_LOOP_START, 0);
   axil_write(REG_FB_CNT, 0);
   axil_write(REG_ACC_CNT, 1);
   load_A();
 
-  $display("  Expected row 0: %0d %0d %0d %0d",
-           exp_neg[0][0], exp_neg[0][1], exp_neg[0][2], exp_neg[0][3]);
+  $display("  Expected row 0: %0d %0d %0d %0d", exp_neg[0][0], exp_neg[0][1], exp_neg[0][2],
+           exp_neg[0][3]);
 
   stream_mat(Bneg, 1);
   while (out_count < SIZE) @(posedge clk);
