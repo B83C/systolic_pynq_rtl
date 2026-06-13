@@ -196,13 +196,13 @@ module sa_wrapper_axi_ctrl_sv #(
 
       if (axil_wr_en) begin
         case (s_axil_awaddr)
-          REG_FB_CNT:   acc_cnt <= s_axil_wdata[7:0];
-          REG_C_LOAD:   c_load_pending <= 1;
-          REG_A_LOAD:   a_load_pending <= 1;
+          REG_FB_CNT: acc_cnt <= s_axil_wdata[7:0];
+          REG_C_LOAD: c_load_pending <= 1;
+          REG_A_LOAD: a_load_pending <= 1;
           REG_A_LOOP_START: a_loop_start <= s_axil_wdata[A_RING_ADDR_W-1:0];
-          REG_A_LOOP_END:   a_loop_end   <= s_axil_wdata[A_RING_ADDR_W-1:0];
+          REG_A_LOOP_END: a_loop_end <= s_axil_wdata[A_RING_ADDR_W-1:0];
           REG_C_LOOP_START: c_loop_start <= s_axil_wdata[C_RING_ADDR_W-1:0];
-          REG_C_LOOP_END:   c_loop_end   <= s_axil_wdata[C_RING_ADDR_W-1:0];
+          REG_C_LOOP_END: c_loop_end <= s_axil_wdata[C_RING_ADDR_W-1:0];
           REG_RST_INDEX: ;  // handled below
           default: ;
         endcase
@@ -217,17 +217,17 @@ module sa_wrapper_axi_ctrl_sv #(
 
       if (axil_rd_en) begin
         case (s_axil_araddr)
-          REG_STATE:   s_axil_rdata <= state;
+          REG_STATE: s_axil_rdata <= state;
           REG_STATUS: begin
             s_axil_rdata <= {29'h0, can_output, s_axis_B_tvalid, b_underflow};
             b_underflow  <= 0;
           end
-          REG_FB_CNT:   s_axil_rdata <= {24'h0, acc_cnt};
-          REG_A_LOAD:   s_axil_rdata <= {31'h0, a_load_pending};
+          REG_FB_CNT: s_axil_rdata <= {24'h0, acc_cnt};
+          REG_A_LOAD: s_axil_rdata <= {31'h0, a_load_pending};
           REG_A_LOOP_START: s_axil_rdata <= {{32 - A_RING_ADDR_W{1'h0}}, a_loop_start};
-          REG_A_LOOP_END:   s_axil_rdata <= {{32 - A_RING_ADDR_W{1'h0}}, a_loop_end};
+          REG_A_LOOP_END: s_axil_rdata <= {{32 - A_RING_ADDR_W{1'h0}}, a_loop_end};
           REG_C_LOOP_START: s_axil_rdata <= {{32 - C_RING_ADDR_W{1'h0}}, c_loop_start};
-          REG_C_LOOP_END:   s_axil_rdata <= {{32 - C_RING_ADDR_W{1'h0}}, c_loop_end};
+          REG_C_LOOP_END: s_axil_rdata <= {{32 - C_RING_ADDR_W{1'h0}}, c_loop_end};
           default: s_axil_rdata <= 32'h0;
         endcase
         s_axil_rvalid <= 1;
@@ -435,7 +435,7 @@ module sa_wrapper_axi_ctrl_sv #(
       output_valid <= 0;
       output_last  <= 0;
     end else begin
-      output_valid <= output_going_on;
+      output_valid <= output_going_on && stop_feedback;
       output_last  <= output_is_last && output_idx_oh[SIZE-1];
     end
   end

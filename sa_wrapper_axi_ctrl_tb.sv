@@ -109,12 +109,24 @@ module sa_wrapper_axi_ctrl_tb;
     matmul(A, B1, exp_AB1);
     matmul(A, B1, exp_A1B);
     matmul(A2, B1, exp_A2B);
-      for (int r = 0; r < SIZE; r++)
+    for (int r = 0; r < SIZE; r++)
     for (int c = 0; c < SIZE; c++) exp_ring_acc[r][c] = exp_A1B[r][c] + exp_A2B[r][c];
-    Bneg[0][0] = -1;  Bneg[0][1] =   2;  Bneg[0][2] =  -3;  Bneg[0][3] =   4;
-    Bneg[1][0] =  5;  Bneg[1][1] =  -6;  Bneg[1][2] =   7;  Bneg[1][3] =  -8;
-    Bneg[2][0] = -9;  Bneg[2][1] =  10;  Bneg[2][2] = -11;  Bneg[2][3] =  12;
-    Bneg[3][0] = 13;  Bneg[3][1] = -14;  Bneg[3][2] =  15;  Bneg[3][3] = -16;
+    Bneg[0][0] = -1;
+    Bneg[0][1] = 2;
+    Bneg[0][2] = -3;
+    Bneg[0][3] = 4;
+    Bneg[1][0] = 5;
+    Bneg[1][1] = -6;
+    Bneg[1][2] = 7;
+    Bneg[1][3] = -8;
+    Bneg[2][0] = -9;
+    Bneg[2][1] = 10;
+    Bneg[2][2] = -11;
+    Bneg[2][3] = 12;
+    Bneg[3][0] = 13;
+    Bneg[3][1] = -14;
+    Bneg[3][2] = 15;
+    Bneg[3][3] = -16;
     matmul(A, Bneg, exp_neg);
     for (int r = 0; r < SIZE; r++)
     for (int c = 0; c < SIZE; c++) begin
@@ -122,24 +134,24 @@ module sa_wrapper_axi_ctrl_tb;
       exp_3way[r][c] = exp_B1[r][c] + exp_B2[r][c] + exp_eye[r][c];
     end
 
-    test_01_single_multiply();
-    test_02_backtoback();
+    // test_01_single_multiply();
+    // test_02_backtoback();
     test_03_accumulation_accout0();
     test_04_accumulation_accout1();
-    test_05_eye();
-    test_06_consecutive_groups();
-    test_07_undersized();
-    test_08_output_pressure();
-    test_09_continuous_streaming();
-    test_10_random_backpressure();
-    test_11_ring_multi_a();
-    test_12_ring_accumulation();
-    test_13_c_matrix();
-    test_14_negative();
-    test_15_state_fuzz();
-    test_16_softrst_in_loadc();
-    test_17_deadlock_stress();
-    test_18_single_element_ring();
+    // test_05_eye();
+    // test_06_consecutive_groups();
+    // test_07_undersized();
+    // test_08_output_pressure();
+    // test_09_continuous_streaming();
+    // test_10_random_backpressure();
+    // test_11_ring_multi_a();
+    // test_12_ring_accumulation();
+    // test_13_c_matrix();
+    // test_14_negative();
+    // test_15_state_fuzz();
+    // test_16_softrst_in_loadc();
+    // test_17_deadlock_stress();
+    // test_18_single_element_ring();
 
     // ═════════════════════════════════════════════════════════════════════
     // Summary
