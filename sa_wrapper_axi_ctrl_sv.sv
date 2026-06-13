@@ -224,9 +224,9 @@ module sa_wrapper_axi_ctrl_sv #(
             s_axil_rdata <= {29'h0, can_output, s_axis_B_tvalid, b_underflow};
             b_underflow  <= 0;
           end
-          REG_FB_CNT:   s_axil_rdata <= {24'h0, acc_cnt};
-          REG_ACC_CNT:  s_axil_rdata <= {24'h0, acc_count};
-          REG_A_LOAD:   s_axil_rdata <= {31'h0, a_load_pending};
+          REG_FB_CNT: s_axil_rdata <= {24'h0, acc_cnt};
+          REG_ACC_CNT: s_axil_rdata <= {24'h0, acc_count};
+          REG_A_LOAD: s_axil_rdata <= {31'h0, a_load_pending};
           REG_A_LOOP_START: s_axil_rdata <= {{32 - A_RING_ADDR_W{1'h0}}, a_loop_start};
           REG_A_LOOP_END: s_axil_rdata <= {{32 - A_RING_ADDR_W{1'h0}}, a_loop_end};
           REG_C_LOOP_START: s_axil_rdata <= {{32 - C_RING_ADDR_W{1'h0}}, c_loop_start};
