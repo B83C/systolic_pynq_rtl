@@ -5,6 +5,29 @@ import os
 import struct
 import subprocess
 
+# PYNQ-Z2 specific xclbin BLANK_METADATA replacement
+PYNQ_Z2_METADATA = r"""<?xml version="1.0" encoding="UTF-8"?>
+<project name="binary_container_1">
+  <platform vendor="xilinx" boardid="Pynq-Z2" name="Pynq-Z2" featureRomTime="0">
+    <version major="0" minor="1"/>
+    <board name="tul.com.tw:pynq-z2:part0:1.0"
+            vendor="tul.com.tw" fpga="xc7z020clg400-1">
+      <interfaces/>
+      <memories>
+        <memory name="psddr" type="ddr3" size="512M"/>
+      </memories>
+    </board>
+    <device name="fpga0" fpgaDevice="xc7z020clg400-1">
+      <core name="OCL_REGION_0" target="bitstream" type="clc_region">
+        <kernelClocks>
+          <clock port="KERNEL_CLK" frequency="100.000000MHz"/>
+        </kernelClocks>
+      </core>
+    </device>
+  </platform>
+</project>
+"""
+
 
 class SystolicArray:
     """PYNQ driver for the systolic-array AXI wrapper.
@@ -56,109 +79,23 @@ class SystolicArray:
         self._input_words_per_beat = self.size * self.dwi // 32
         self._output_words_per_beat = self.size * self.dwo // 32
 
-        self.mmio = MMIO(ctrl_base_addr, 0x1000)
+        # Patch PYNQ's BLANK_METADATA with correct PYNQ-Z2 board info
+        # so XRT accepts the generated xclbin.
+        import pynq.pl_server.embedded_device as ed
+        ed.BLANK_METADATA = PYNQ_Z2_METADATA
 
-        # Repoint PYNQ state dir to user-writable location
-        self._fix_state_dir()
-
-        # Always program the FPGA — reliable, ~3s overhead
         if bitstream is not None:
-            self._load_fpga(bitstream)
-
             self.ol = Overlay(bitstream, download=False)
             self.dma = self.ol.axi_dma_0
-
-            # Inject PS DDR into device mem_dict (needs Overlay to exist)
-            self._inject_psddr()
         else:
             self.ol = None
             self.dma = None
 
+        self.mmio = MMIO(ctrl_base_addr, 0x1000)
+
         # Probe actual ring depth from hardware register width
         self.a_depth = self._probe_depth(0x1C, a_depth or 8)
         self.c_depth = self._probe_depth(0x24, c_depth or 8)
-
-    @staticmethod
-    def _check_design_present(base_addr):
-        """Check if SA design is loaded by reading the state register."""
-        try:
-            mmio = MMIO(base_addr, 0x1000)
-            v = mmio.read(0x00)
-            # Valid SA returns a small state value (0-3) in bits[1:0];
-            # bus error returns 0xB8000000 (DECERR)
-            return (v & 0x3) in (0, 1, 2, 3) and (v >> 8) == 0
-        except Exception:
-            return False
-
-    def _load_fpga(self, bitstream):
-        """Program FPGA via fpga-mgr: convert .bit → raw LE → firmware."""
-        with open(bitstream, "rb") as f:
-            data = f.read()
-        for i in range(len(data)):
-            if data[i:i+4] == b"\xaa\x99\x55\x66":
-                raw_be = data[i-4:]
-                break
-        raw_le = bytearray()
-        for i in range(0, len(raw_be), 4):
-            w = struct.unpack(">I", raw_be[i:i+4])[0]
-            raw_le.extend(struct.pack("<I", w))
-        fw_path = "/lib/firmware/systolic.bin"
-        with open("/tmp/systolic_raw.bin", "wb") as f:
-            f.write(raw_le)
-        subprocess.run(f"cp /tmp/systolic_raw.bin {fw_path}", shell=True, timeout=10)
-        subprocess.run(f"echo systolic.bin > /sys/class/fpga_manager/fpga0/firmware",
-                       shell=True, timeout=30)
-        time.sleep(2)
-        # Deassert PL resets after FPGA programming
-        try:
-            import mmap
-            f = os.open("/dev/mem", os.O_RDWR | os.O_SYNC)
-            slcr = mmap.mmap(f, 4096, offset=0xF8000000)
-            struct.pack_into("<I", slcr, 8, 0xDF0D)  # unlock SLCR
-            struct.pack_into("<I", slcr, 0x230, 0)   # deassert FPGA resets
-            struct.pack_into("<I", slcr, 8, 0)        # lock SLCR
-            os.close(f)
-        except Exception:
-            pass
-
-    @staticmethod
-    def _fix_state_dir():
-        """Repoint PYNQ's global state dir to user-writable location."""
-        import pynq.pl_server.global_state as gs_mod
-        state_dir = os.path.expanduser("~/.local/share/pynq")
-        os.makedirs(state_dir, exist_ok=True)
-        gs_mod.STATE_DIR = state_dir
-
-        psddr_entry = {
-            "phys_addr": 0, "addr_range": 536870912, "tag": "psddr",
-            "idx": 0, "used": True, "base_address": 0,
-            "mem_used": 0, "size": 536870912, "streaming": False,
-        }
-        import json, time
-        gs_path = os.path.join(state_dir, "global_pl_state_.json")
-        gs = {
-            "bitfile_name": "", "active_name": "Pynq-Z2",
-            "timestamp": time.strftime("%Y/%m/%d %H:%M:%S"),
-            "bitfile_hash": "", "shutdown_ips": {}, "psddr": psddr_entry,
-        }
-        with open(gs_path, "w") as f:
-            json.dump(gs, f, indent=2)
-
-    @staticmethod
-    def _inject_psddr():
-        """Inject PS DDR into active device mem_dict so allocate() works."""
-        from pynq.pl_server.device import Device
-        try:
-            dev = Device.active_device
-            if hasattr(dev, "mem_dict"):
-                psddr = {
-                    "phys_addr": 0, "addr_range": 536870912, "tag": "psddr",
-                    "idx": 0, "used": True, "base_address": 0,
-                    "mem_used": 0, "size": 536870912, "streaming": False,
-                }
-                dev.mem_dict.setdefault("psddr_sa", psddr)
-        except Exception:
-            pass
 
     def _probe_depth(self, addr, fallback):
         """Determine ring depth by writing all-ones and reading back."""
