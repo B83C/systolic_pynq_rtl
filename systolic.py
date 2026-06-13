@@ -57,6 +57,10 @@ class SystolicArray:
 
         self.mmio = MMIO(ctrl_base_addr, 0x1000)
 
+        # Repoint PYNQ state dir to user-writable location before any
+        # Overlay call so allocate() can find PS DDR memory.
+        self._fix_global_state()
+
         # Check if our design is loaded; if not, program the FPGA
         if bitstream is not None:
             if not self._check_design_present(ctrl_base_addr):
@@ -71,9 +75,6 @@ class SystolicArray:
         # Probe actual ring depth from hardware register width
         self.a_depth = self._probe_depth(0x1C, a_depth or 8)
         self.c_depth = self._probe_depth(0x24, c_depth or 8)
-
-        # Ensure PYNQ global state has PS DDR memory for allocate()
-        self._fix_global_state()
 
     @staticmethod
     def _check_design_present(base_addr):
@@ -110,32 +111,47 @@ class SystolicArray:
 
     @staticmethod
     def _fix_global_state():
-        """Ensure PYNQ global state has psddr so allocate() works."""
+        """Repoint PYNQ's global state dir to user-writable location & populate psddr."""
         import json, time
-        from pynq.pl_server.global_state import _get_state_path
-        gs_path = _get_state_path()
+        import pynq.pl_server.global_state as gs_mod
+        from pynq.pl_server.device import Device
+
+        state_dir = os.path.expanduser("~/.local/share/pynq")
+        os.makedirs(state_dir, exist_ok=True)
+
+        # Repoint PYNQ's STATE_DIR to user-writable path
+        gs_mod.STATE_DIR = state_dir
+
+        psddr_entry = {
+            "phys_addr": 0,
+            "addr_range": 536870912,
+            "tag": "psddr",
+            "idx": 0,
+            "used": True,
+            "base_address": 0,
+            "mem_used": 0,
+            "size": 536870912,
+            "streaming": False,
+        }
+        gs_path = os.path.join(state_dir, "global_pl_state_.json")
         gs = {
             "bitfile_name": "",
             "active_name": "Pynq-Z2",
             "timestamp": time.strftime("%Y/%m/%d %H:%M:%S"),
             "bitfile_hash": "",
             "shutdown_ips": {},
-            "psddr": {
-                "phys_addr": 0,
-                "addr_range": 536870912,
-                "tag": "psddr",
-                "idx": 0,
-                "used": True,
-                "base_address": 0,
-                "mem_used": 0,
-                "size": 536870912,
-                "streaming": False,
-            },
+            "psddr": psddr_entry,
         }
-        parent = os.path.dirname(str(gs_path))
-        os.makedirs(parent, exist_ok=True)
         with open(gs_path, "w") as f:
             json.dump(gs, f, indent=2)
+
+        # Inject into active device mem_dict directly
+        try:
+            dev = Device.active_device
+            if hasattr(dev, "mem_dict"):
+                dev.mem_dict.setdefault("psddr_sa", psddr_entry)
+        except Exception:
+            pass
 
     def _probe_depth(self, addr, fallback):
         """Determine ring depth by writing all-ones and reading back."""
