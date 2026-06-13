@@ -57,9 +57,8 @@ class SystolicArray:
 
         self.mmio = MMIO(ctrl_base_addr, 0x1000)
 
-        # Repoint PYNQ state dir to user-writable location before any
-        # Overlay call so allocate() can find PS DDR memory.
-        self._fix_global_state()
+        # Repoint PYNQ state dir to user-writable location
+        self._fix_state_dir()
 
         # Check if our design is loaded; if not, program the FPGA
         if bitstream is not None:
@@ -68,6 +67,9 @@ class SystolicArray:
 
             self.ol = Overlay(bitstream, download=False)
             self.dma = self.ol.axi_dma_0
+
+            # Inject PS DDR into device mem_dict (needs Overlay to exist)
+            self._inject_psddr()
         else:
             self.ol = None
             self.dma = None
@@ -110,46 +112,41 @@ class SystolicArray:
         time.sleep(2)
 
     @staticmethod
-    def _fix_global_state():
-        """Repoint PYNQ's global state dir to user-writable location & populate psddr."""
-        import json, time
+    def _fix_state_dir():
+        """Repoint PYNQ's global state dir to user-writable location."""
         import pynq.pl_server.global_state as gs_mod
-        from pynq.pl_server.device import Device
-
         state_dir = os.path.expanduser("~/.local/share/pynq")
         os.makedirs(state_dir, exist_ok=True)
-
-        # Repoint PYNQ's STATE_DIR to user-writable path
         gs_mod.STATE_DIR = state_dir
 
         psddr_entry = {
-            "phys_addr": 0,
-            "addr_range": 536870912,
-            "tag": "psddr",
-            "idx": 0,
-            "used": True,
-            "base_address": 0,
-            "mem_used": 0,
-            "size": 536870912,
-            "streaming": False,
+            "phys_addr": 0, "addr_range": 536870912, "tag": "psddr",
+            "idx": 0, "used": True, "base_address": 0,
+            "mem_used": 0, "size": 536870912, "streaming": False,
         }
+        import json, time
         gs_path = os.path.join(state_dir, "global_pl_state_.json")
         gs = {
-            "bitfile_name": "",
-            "active_name": "Pynq-Z2",
+            "bitfile_name": "", "active_name": "Pynq-Z2",
             "timestamp": time.strftime("%Y/%m/%d %H:%M:%S"),
-            "bitfile_hash": "",
-            "shutdown_ips": {},
-            "psddr": psddr_entry,
+            "bitfile_hash": "", "shutdown_ips": {}, "psddr": psddr_entry,
         }
         with open(gs_path, "w") as f:
             json.dump(gs, f, indent=2)
 
-        # Inject into active device mem_dict directly
+    @staticmethod
+    def _inject_psddr():
+        """Inject PS DDR into active device mem_dict so allocate() works."""
+        from pynq.pl_server.device import Device
         try:
             dev = Device.active_device
             if hasattr(dev, "mem_dict"):
-                dev.mem_dict.setdefault("psddr_sa", psddr_entry)
+                psddr = {
+                    "phys_addr": 0, "addr_range": 536870912, "tag": "psddr",
+                    "idx": 0, "used": True, "base_address": 0,
+                    "mem_used": 0, "size": 536870912, "streaming": False,
+                }
+                dev.mem_dict.setdefault("psddr_sa", psddr)
         except Exception:
             pass
 
