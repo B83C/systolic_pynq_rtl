@@ -78,24 +78,74 @@ class SystolicArray:
         self.dwo = dwo
         self._input_words_per_beat = self.size * self.dwi // 32
         self._output_words_per_beat = self.size * self.dwo // 32
+        self._dma_base = ctrl_base_addr + 0x400000  # DMA at 0x40400000
 
-        # Patch PYNQ's BLANK_METADATA with correct PYNQ-Z2 board info
-        # so XRT accepts the generated xclbin.
-        import pynq.pl_server.embedded_device as ed
-        ed.BLANK_METADATA = PYNQ_Z2_METADATA
+        # Open /dev/mem for direct register access (bypass XRT/PYNQ)
+        self._mem_fd = os.open("/dev/mem", os.O_RDWR | os.O_SYNC)
+        self._sa_map = mmap.mmap(self._mem_fd, 4096, offset=ctrl_base_addr)
+        self._dma_map = mmap.mmap(self._mem_fd, 65536, offset=self._dma_base)
 
+        # Parse hwh for DMA channel info (used by program())
         if bitstream is not None:
-            self.ol = Overlay(bitstream, download=True)
-            self.dma = self.ol.axi_dma_0
+            self.ol = Overlay(bitstream, download=False)
         else:
             self.ol = None
-            self.dma = None
 
         self.mmio = MMIO(ctrl_base_addr, 0x1000)
 
         # Probe actual ring depth from hardware register width
         self.a_depth = self._probe_depth(0x1C, a_depth or 8)
         self.c_depth = self._probe_depth(0x24, c_depth or 8)
+
+    def _dma_reg_write(self, offset, value):
+        struct.pack_into("<I", self._dma_map, offset, value)
+
+    def _dma_reg_read(self, offset):
+        return struct.unpack("<I", self._dma_map[offset:offset+4])[0]
+
+    def _dma_wait_idle(self, offset, timeout_ms=1000):
+        for _ in range(timeout_ms * 10):
+            if self._dma_reg_read(offset + 4) & 0x02:  # idle bit
+                return True
+            time.sleep(0.0001)
+        return False
+
+    def _dma_send(self, buf):
+        """Send buffer via DMA (MM2S) using direct register access."""
+        pa = buf.device_address
+        nbytes = buf.nbytes
+        self._dma_reg_write(0x00, 1)  # reset + start
+        time.sleep(0.001)
+        self._dma_reg_write(0x18, pa & 0xFFFFFFFF)
+        self._dma_reg_write(0x1C, (pa >> 32) & 0xFFFFFFFF)
+        self._dma_reg_write(0x28, nbytes)
+        if not self._dma_wait_idle(0x00):
+            raise RuntimeError("DMA MM2S timeout")
+
+    def _dma_recv(self, buf):
+        """Receive buffer via DMA (S2MM) using direct register access."""
+        pa = buf.device_address
+        nbytes = buf.nbytes
+        self._dma_reg_write(0x30, 1)  # reset + start
+        time.sleep(0.001)
+        self._dma_reg_write(0x48, pa & 0xFFFFFFFF)
+        self._dma_reg_write(0x4C, (pa >> 32) & 0xFFFFFFFF)
+        self._dma_reg_write(0x58, nbytes)
+        if not self._dma_wait_idle(0x30):
+            raise RuntimeError("DMA S2MM timeout")
+        buf.sync()
+
+    def _dma_reg_write(self, offset, value):
+        struct.pack_into("<I", self._dma_map, offset, value)
+
+    def _dma_reg_read(self, offset):
+        return struct.unpack("<I", self._dma_map[offset:offset+4])[0]
+
+    def _sa_reg_write(self, offset, value):
+        struct.pack_into("<I", self._sa_map, offset, value)
+
+    def _sa_reg_read(self, offset):
+        return struct.unpack("<I", self._sa_map[offset:offset+4])[0]
 
     def _probe_depth(self, addr, fallback):
         """Determine ring depth by writing all-ones and reading back."""
