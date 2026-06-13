@@ -95,6 +95,7 @@ module sa_wrapper_axi_ctrl_sv #(
   // 0x20  C_LOOP_START: first ring index for C
   // 0x24  C_LOOP_END:   last ring index for C
   // 0x2C  RST_INDEX:    write to reset ring pointers and pending flags
+  // 0x28  SIZE:         RO  array dimension parameter value
 
   reg b_underflow;
   reg [7:0] acc_cnt;
@@ -234,7 +235,8 @@ module sa_wrapper_axi_ctrl_sv #(
           REG_A_LOOP_START: s_axil_rdata <= {{32 - A_RING_ADDR_W{1'h0}}, a_loop_start};
           REG_A_LOOP_END: s_axil_rdata <= {{32 - A_RING_ADDR_W{1'h0}}, a_loop_end};
           REG_C_LOOP_START: s_axil_rdata <= {{32 - C_RING_ADDR_W{1'h0}}, c_loop_start};
-          REG_C_LOOP_END: s_axil_rdata <= {{32 - C_RING_ADDR_W{1'h0}}, c_loop_end};
+          REG_C_LOOP_END:   s_axil_rdata <= {{32 - C_RING_ADDR_W{1'h0}}, c_loop_end};
+          REG_SIZE:     s_axil_rdata <= SIZE;
           default: s_axil_rdata <= 32'h0;
         endcase
         s_axil_rvalid <= 1;

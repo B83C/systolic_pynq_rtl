@@ -20,5 +20,6 @@ localparam REG_A_LOOP_END   = 6'h1C;
 localparam REG_C_LOOP_START = 6'h20;
 localparam REG_C_LOOP_END   = 6'h24;
 localparam REG_RST_INDEX    = 6'h2C;
+localparam REG_SIZE         = 6'h28;
 
 `endif
