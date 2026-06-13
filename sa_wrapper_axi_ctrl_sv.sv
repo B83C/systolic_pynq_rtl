@@ -281,7 +281,10 @@ module sa_wrapper_axi_ctrl_sv #(
         end
       end
 
-      if (state_nxt == IDLE) begin
+      if (state_nxt == IDLE && !output_going_on) begin
+        current_row <= 1;
+      end
+      if (state_nxt == LOAD_A || state_nxt == LOAD_C) begin
         current_row <= 1;
       end
 
@@ -387,7 +390,7 @@ module sa_wrapper_axi_ctrl_sv #(
     end else if (soft_rst) begin
       c_row <= '{default: '0};
     end else if (state == LOAD_A || state == LOAD_C) begin
-      if (acc_cnt == 0) c_row <= '{default: '0};
+      c_row <= '{default: '0};
     end else begin
       if (stop_feedback) begin
         c_row <= '{default: c_ring[c_rd_ptr]};
