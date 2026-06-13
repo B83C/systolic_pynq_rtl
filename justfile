@@ -12,7 +12,7 @@ test-ctrl:
   verilator --cc sa_wrapper_axi_ctrl_tb.sv --trace-fst --build \
     -CFLAGS -O0 -CFLAGS -fuse-ld=mold \
     --verilate-jobs 16 --threads 4 --hierarchical --timing --binary \
-    --Mdir sa_wrapper_axi_ctrl_tb_obj/ -Wno-WIDTHTRUNC -Wno-WIDTHEXPAND
+    --Mdir sa_wrapper_axi_ctrl_tb_obj/ -Wno-WIDTHTRUNC -Wno-WIDTHEXPAND -Wno-UNOPTFLAT
   cd sa_wrapper_axi_ctrl_tb_obj/ && timeout 15 ./Vsa_wrapper_axi_ctrl_tb
 
 # # C++ testbench: compile DUT + tb_main.cpp into shared obj dir

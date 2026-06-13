@@ -384,21 +384,14 @@ module sa_wrapper_axi_ctrl_sv #(
       .count(acc_count)
   );
 
-  always @(posedge clk, negedge rst_n) begin
-    if (!rst_n) begin
-      c_row <= '{default: '0};
-    end else if (soft_rst) begin
-      c_row <= '{default: '0};
-    end else if (state == LOAD_A || state == LOAD_C) begin
-      c_row <= '{default: '0};
-    end else if (advance) begin
-      if (stop_feedback) begin
-        c_row <= '{default: c_ring[c_rd_ptr]};
-      end else begin
-        c_row <= result_row;
-      end
+  wire [DATA_WIDTH_OUT-1:0] c_row_muxed[SIZE];
+  generate
+    for (genvar i = 0; i < SIZE; i++) begin : gen_c_row_mux
+      assign c_row_muxed[i] = (state == LOAD_A || state == LOAD_C) ? 0 :
+                               stop_feedback ? c_ring[c_rd_ptr] :
+                               result_row[i];
     end
-  end
+  endgenerate
 
   always @(posedge clk) begin
     if (soft_rst) delayed_b_consume <= 0;
@@ -425,7 +418,7 @@ module sa_wrapper_axi_ctrl_sv #(
       .valid     (delayed_b_consume),
       .a_row     (a_row),
       .b_row     (b_row),
-      .c_row     (c_row),
+      .c_row     (c_row_muxed),
       .result_row(result_row)
   );
 
