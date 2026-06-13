@@ -1,0 +1,27 @@
+# Veridian LSP + Verible configuration for systolic SA project
+include_dirs:
+  - .
+  - tb
+source_dirs:
+  - .
+  - tb
+# auto_search_workdir: true
+verible:
+  syntax:
+    enabled: true
+    path: "verible-verilog-syntax"
+  format:
+    enabled: true
+    path: "verible-verilog-format"
+verilator:
+  syntax:
+    enabled: true
+    path: "verilator"
+    args:
+      - --lint-only
+      - --sv
+      - -Wall
+      - -Wno-UNOPTFLAT
+      - -Wno-WIDTHTRUNC
+      - -Wno-WIDTHEXPAND
+# log_level: Info
