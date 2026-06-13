@@ -49,9 +49,9 @@ module sa_wrapper_axi_ctrl_sv #(
   state_t state, state_nxt;
 
   localparam ROW_BITS = SIZE > 1 ? $clog2(SIZE) : 1;
-  localparam unsigned A_RING_DEPTH = A_DEPTH;
+  localparam unsigned A_RING_DEPTH = A_DEPTH * SIZE;
   localparam unsigned A_RING_ADDR_W = $clog2(A_RING_DEPTH);
-  localparam unsigned C_RING_ADDR_W = $clog2(C_DEPTH);
+  localparam unsigned C_RING_ADDR_W = $clog2(C_DEPTH * SIZE);
 
   logic last_row;
   reg [SIZE-1:0] current_row, output_idx_oh;
@@ -78,7 +78,7 @@ module sa_wrapper_axi_ctrl_sv #(
   logic [(DATA_WIDTH_IN * SIZE)-1:0] a_ring[A_RING_DEPTH];
   logic [A_RING_ADDR_W-1:0] a_rd_ptr;
 
-  logic [DATA_WIDTH_OUT-1:0] c_ring[C_DEPTH];
+  logic [DATA_WIDTH_OUT-1:0] c_ring[C_DEPTH * SIZE];
   logic [C_RING_ADDR_W-1:0] c_rd_ptr;
 
   // AXI-Lite registers (6-bit addresses, 0x00..0x3F)
@@ -186,7 +186,7 @@ module sa_wrapper_axi_ctrl_sv #(
       a_loop_start  <= 0;
       a_loop_end    <= SIZE - 1;
       c_loop_start  <= 0;
-      c_loop_end    <= C_DEPTH - 1;
+      c_loop_end    <= (C_DEPTH * SIZE) - 1;
       acc_output_en <= 0;
       acc_cnt       <= 0;
       b_underflow   <= 0;
