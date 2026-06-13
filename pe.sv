@@ -13,9 +13,11 @@
     output [DATA_WIDTH_OUT-1:0] partial_sum
 );
 
-  wire signed [DATA_WIDTH_OUT-1:0] mac = $signed(a_in) * $signed(b_in) + $signed(c_in);
+  wire signed [DATA_WIDTH_OUT-1:0] a_w = {{(DATA_WIDTH_OUT-DATA_WIDTH_IN){a_in[DATA_WIDTH_IN-1]}}, a_in};
+  wire signed [DATA_WIDTH_OUT-1:0] b_w = {{(DATA_WIDTH_OUT-DATA_WIDTH_IN){b_in[DATA_WIDTH_IN-1]}}, b_in};
+  wire signed [DATA_WIDTH_OUT-1:0] mac = a_w * b_w + $signed(c_in);
 
-  reg signed [DATA_WIDTH_OUT-1:0] sum;
+  reg signed  [DATA_WIDTH_OUT-1:0] sum;
   initial sum = 0;
 
   assign partial_sum = sum;
