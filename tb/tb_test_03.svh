@@ -23,7 +23,7 @@ task test_03_accumulation_accout0();
   if (out_count >= SIZE) begin
     $display("  Checking final accumulated result");
     for (int r = 0; r < SIZE; r++)
-      check_row_str($sformatf("acc row %0d", r), r, exp_3way[r]);
-    $display("  final accumulated correct\n");
+      check_row_str($sformatf("acc row %0d", r), out_count - SIZE + r, exp_3way[r]);
+    if (errors == 0) $display("  final accumulated correct\n");
   end
 endtask

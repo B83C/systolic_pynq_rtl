@@ -87,14 +87,13 @@ module sa_wrapper_axi_ctrl_sv #(
   // 0x08  C_LOAD:       write to trigger C_LOAD
   // 0x0C  FB_CNT:       group accumulation counter
   // 0x10  A_LOAD:       write to trigger A_LOAD
-  // 0x14  ACC_OUT:      [0]=enable output during accumulation
+  // 0x14  (reserved / unused)
   // 0x18  A_LOOP_START: first ring index for A
   // 0x1C  A_LOOP_END:   last ring index for A
   // 0x20  C_LOOP_START: first ring index for C
   // 0x24  C_LOOP_END:   last ring index for C
   // 0x2C  RST_INDEX:    write to reset ring pointers and pending flags
 
-  reg acc_output_en;
   reg b_underflow;
   reg [7:0] acc_cnt;
   reg a_load_pending;
@@ -187,7 +186,6 @@ module sa_wrapper_axi_ctrl_sv #(
       a_loop_end    <= SIZE - 1;
       c_loop_start  <= 0;
       c_loop_end    <= (C_DEPTH * SIZE) - 1;
-      acc_output_en <= 0;
       acc_cnt       <= 0;
       b_underflow   <= 0;
       soft_rst      <= 0;
@@ -201,7 +199,6 @@ module sa_wrapper_axi_ctrl_sv #(
           6'h0C:   acc_cnt <= s_axil_wdata[7:0];
           6'h08:   c_load_pending <= 1;
           6'h10:   a_load_pending <= 1;
-          6'h14:   acc_output_en <= s_axil_wdata[0];
           6'h18:   a_loop_start <= s_axil_wdata[A_RING_ADDR_W-1:0];
           6'h1C:   a_loop_end <= s_axil_wdata[A_RING_ADDR_W-1:0];
           6'h20:   c_loop_start <= s_axil_wdata[C_RING_ADDR_W-1:0];
@@ -227,7 +224,6 @@ module sa_wrapper_axi_ctrl_sv #(
           end
           6'h0C:   s_axil_rdata <= {24'h0, acc_cnt};
           6'h10:   s_axil_rdata <= {31'h0, a_load_pending};
-          6'h14:   s_axil_rdata <= {31'h0, acc_output_en};
           6'h18:   s_axil_rdata <= {{32 - A_RING_ADDR_W{1'h0}}, a_loop_start};
           6'h1C:   s_axil_rdata <= {{32 - A_RING_ADDR_W{1'h0}}, a_loop_end};
           6'h20:   s_axil_rdata <= {{32 - C_RING_ADDR_W{1'h0}}, c_loop_start};
@@ -391,7 +387,7 @@ module sa_wrapper_axi_ctrl_sv #(
       c_row <= '{default: '0};
     end else if (state == LOAD_A || state == LOAD_C) begin
       c_row <= '{default: '0};
-    end else begin
+    end else if (advance) begin
       if (stop_feedback) begin
         c_row <= '{default: c_ring[c_rd_ptr]};
       end else begin
@@ -439,7 +435,7 @@ module sa_wrapper_axi_ctrl_sv #(
       output_valid <= 0;
       output_last  <= 0;
     end else begin
-      output_valid <= output_going_on && (stop_feedback || acc_output_en);
+      output_valid <= output_going_on;
       output_last  <= output_is_last && output_idx_oh[SIZE-1];
     end
   end

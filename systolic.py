@@ -190,7 +190,6 @@ class SystolicArray:
     def configure(
         self,
         fb_cnt=0,
-        acc_out=True,
         a_loop_start=0,
         a_loop_end=None,
         c_loop_start=0,
@@ -198,7 +197,6 @@ class SystolicArray:
     ):
         """Write all config registers. Call while IDLE."""
         self.reg_write(self.REG_FB_CNT, fb_cnt & 0xFF)
-        self.reg_write(self.REG_ACC_OUT, 1 if acc_out else 0)
         self.reg_write(self.REG_A_LOOP_START, a_loop_start)
         if a_loop_end is None:
             a_loop_end = self.a_depth - 1
@@ -263,7 +261,7 @@ class SystolicArray:
     # ------------------------------------------------------------------
     #  Compute  —  C + A × B
     # ------------------------------------------------------------------
-    def compute(self, A, B, C=None, fb_cnt=0, acc_out=True):
+    def compute(self, A, B, C=None, fb_cnt=0):
         """Run one SA transaction:  C + A × B.
 
         Parameters
@@ -273,7 +271,6 @@ class SystolicArray:
         C : ndarray (N,) uint32 or None
             One 32-bit C per output row.  None → C = 0.
         fb_cnt : int   accumulation group size (0 = off)
-        acc_out : bool  show outputs during accumulation
 
         Returns
         -------
@@ -285,7 +282,7 @@ class SystolicArray:
             assert len(C) == n
 
         self.soft_reset()
-        self.configure(fb_cnt=fb_cnt, acc_out=acc_out)
+        self.configure(fb_cnt=fb_cnt)
 
         in_a = self.pack_rows(A, self._input_words_per_beat, 1)
         in_b = self.pack_rows(B, self._input_words_per_beat, 1)
@@ -332,7 +329,7 @@ class SystolicArray:
         """
         m = len(B_matrices)
         self.soft_reset()
-        self.configure(fb_cnt=fb_cnt, acc_out=True)
+        self.configure(fb_cnt=fb_cnt)
 
         in_a = self.pack_rows(A, self._input_words_per_beat, 1)
         out = allocate(
