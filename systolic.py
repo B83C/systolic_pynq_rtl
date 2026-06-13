@@ -85,7 +85,7 @@ class SystolicArray:
         ed.BLANK_METADATA = PYNQ_Z2_METADATA
 
         if bitstream is not None:
-            self.ol = Overlay(bitstream, download=False)
+            self.ol = Overlay(bitstream, download=True)
             self.dma = self.ol.axi_dma_0
         else:
             self.ol = None
