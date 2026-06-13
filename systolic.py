@@ -2,6 +2,7 @@ from pynq import Overlay, allocate, MMIO
 import numpy as np
 import time
 import os
+import struct
 import subprocess
 
 
@@ -91,7 +92,6 @@ class SystolicArray:
 
     def _load_fpga(self, bitstream):
         """Program FPGA via fpga-mgr: convert .bit → raw LE → firmware."""
-        import struct as _struct
         with open(bitstream, "rb") as f:
             data = f.read()
         for i in range(len(data)):
@@ -100,8 +100,8 @@ class SystolicArray:
                 break
         raw_le = bytearray()
         for i in range(0, len(raw_be), 4):
-            w = _struct.unpack(">I", raw_be[i:i+4])[0]
-            raw_le.extend(_struct.pack("<I", w))
+            w = struct.unpack(">I", raw_be[i:i+4])[0]
+            raw_le.extend(struct.pack("<I", w))
         fw_path = "/lib/firmware/systolic.bin"
         with open("/tmp/systolic_raw.bin", "wb") as f:
             f.write(raw_le)
@@ -109,6 +109,17 @@ class SystolicArray:
         subprocess.run(f"echo systolic.bin > /sys/class/fpga_manager/fpga0/firmware",
                        shell=True, timeout=30)
         time.sleep(2)
+        # Deassert PL resets after FPGA programming
+        try:
+            import mmap
+            f = os.open("/dev/mem", os.O_RDWR | os.O_SYNC)
+            slcr = mmap.mmap(f, 4096, offset=0xF8000000)
+            struct.pack_into("<I", slcr, 8, 0xDF0D)  # unlock SLCR
+            struct.pack_into("<I", slcr, 0x230, 0)   # deassert FPGA resets
+            struct.pack_into("<I", slcr, 8, 0)        # lock SLCR
+            os.close(f)
+        except Exception:
+            pass
 
     @staticmethod
     def _fix_state_dir():
