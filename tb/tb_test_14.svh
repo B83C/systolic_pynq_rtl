@@ -8,7 +8,7 @@ task automatic test_14_negative();
   m_axis_tready = 1;
   axil_write(REG_A_LOOP_START, 0);
   axil_write(REG_FB_CNT, 0);
-  axil_write(REG_ACC_OUT, 1);
+  axil_write(REG_ACC_CNT, 1);
   load_A();
 
   $display("  Expected row 0: %0d %0d %0d %0d",

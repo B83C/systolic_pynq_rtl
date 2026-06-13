@@ -19,7 +19,7 @@ task automatic test_15_state_fuzz();
 
   errors = 0; out_count = 0;
   m_axis_tready = 1;
-  axil_write(REG_ACC_OUT, 1);
+  axil_write(REG_ACC_CNT, 1);
   axil_write(REG_FB_CNT, 0);
 
   // [1] A_LOAD while tvalid=1 (DMA still sending B)

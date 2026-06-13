@@ -109,8 +109,8 @@ task reset_test();
 endtask
 
 task wait_output_done();
-  while (out_count == 0) @(posedge clk);
-  while (!result_tlast[out_count-1]) @(posedge clk);
+  while (dut.state != 2'd0) @(posedge clk);
+  repeat (50) @(posedge clk);
 endtask
 
 task soft_rst_via_axil();

@@ -46,6 +46,7 @@ module sa_wrapper_axi_ctrl_sv #(
     output wire idle
 );
 
+  logic stop_feedback;
   state_t state, state_nxt;
 
   localparam ROW_BITS = SIZE > 1 ? $clog2(SIZE) : 1;
@@ -58,12 +59,13 @@ module sa_wrapper_axi_ctrl_sv #(
   logic output_going_on;
   logic delayed_b_consume;
 
+  wire  can_output = !m_axis_tvalid || m_axis_tready;
+
   wire  operate = s_axis_B_tvalid && can_output;
   wire  b_consume = operate && (state == LOAD_B);
   wire  a_consume = operate && (state == LOAD_A);
   wire  c_consume = operate && (state == LOAD_C);
 
-  wire  can_output = !m_axis_tvalid || m_axis_tready;
   wire  output_stalled = output_going_on && !m_axis_tready;
   wire  advance = b_consume | (output_going_on && m_axis_tready);
 
@@ -87,7 +89,7 @@ module sa_wrapper_axi_ctrl_sv #(
   // 0x08  C_LOAD:       write to trigger C_LOAD
   // 0x0C  FB_CNT:       group accumulation counter
   // 0x10  A_LOAD:       write to trigger A_LOAD
-  // 0x14  (reserved / unused)
+  // 0x14  ACC_CNT:      RO  current accumulation counter value
   // 0x18  A_LOOP_START: first ring index for A
   // 0x1C  A_LOOP_END:   last ring index for A
   // 0x20  C_LOOP_START: first ring index for C
@@ -222,8 +224,9 @@ module sa_wrapper_axi_ctrl_sv #(
             s_axil_rdata <= {29'h0, can_output, s_axis_B_tvalid, b_underflow};
             b_underflow  <= 0;
           end
-          REG_FB_CNT: s_axil_rdata <= {24'h0, acc_cnt};
-          REG_A_LOAD: s_axil_rdata <= {31'h0, a_load_pending};
+          REG_FB_CNT:   s_axil_rdata <= {24'h0, acc_cnt};
+          REG_ACC_CNT:  s_axil_rdata <= {24'h0, acc_count};
+          REG_A_LOAD:   s_axil_rdata <= {31'h0, a_load_pending};
           REG_A_LOOP_START: s_axil_rdata <= {{32 - A_RING_ADDR_W{1'h0}}, a_loop_start};
           REG_A_LOOP_END: s_axil_rdata <= {{32 - A_RING_ADDR_W{1'h0}}, a_loop_end};
           REG_C_LOOP_START: s_axil_rdata <= {{32 - C_RING_ADDR_W{1'h0}}, c_loop_start};
@@ -366,7 +369,8 @@ module sa_wrapper_axi_ctrl_sv #(
   end
 
 
-  logic stop_feedback;
+  wire [7:0] acc_count;
+
   counter #(
       .DYN(1),
       .MAX(256)
@@ -377,7 +381,7 @@ module sa_wrapper_axi_ctrl_sv #(
       .dyn_max(acc_cnt),
       .zero(stop_feedback),
       .ending(),
-      .count()
+      .count(acc_count)
   );
 
   always @(posedge clk, negedge rst_n) begin

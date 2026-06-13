@@ -6,7 +6,7 @@ task automatic test_13_c_matrix();
   reset_test();
   errors = 0; out_count = 0;
   m_axis_tready = 1;
-  axil_write(REG_ACC_OUT, 1);
+  axil_write(REG_ACC_CNT, 1);
   axil_write(REG_FB_CNT, 0);
   axil_write(6'h24, SIZE - 1);   // C_LOOP_END
   axil_write(6'h20, 0);          // C_LOOP_START

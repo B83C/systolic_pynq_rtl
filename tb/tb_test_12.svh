@@ -16,7 +16,7 @@ task automatic test_12_ring_accumulation();
 
   // FB_CNT=2, acc_out=1 — show both individual and accumulated
   axil_write(REG_FB_CNT, 2);
-  axil_write(REG_ACC_OUT, 1);
+  axil_write(REG_ACC_CNT, 1);
 
   // 3 B matrices: B1 (uses A), B2 (uses A2), B3 (uses A again, triggers reset)
   stream_mat(B1, 0);

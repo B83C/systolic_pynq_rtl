@@ -8,7 +8,7 @@ task automatic test_10_random_backpressure();
   m_axis_tready = 1;
   axil_write(REG_A_LOOP_START, 0);
   axil_write(REG_FB_CNT, 0);
-  axil_write(REG_ACC_OUT, 1);
+  axil_write(REG_ACC_CNT, 1);
   load_A();
 
   stream_mat(B1, 0);  repeat (8) @(posedge clk);

@@ -7,7 +7,7 @@ task test_05_eye();
   errors = 0; out_count = 0;
   axil_write(REG_A_LOOP_START, 0);
   axil_write(REG_FB_CNT, 0);
-  axil_write(REG_ACC_OUT, 1);
+  axil_write(REG_ACC_CNT, 1);
   load_A();
   stream_mat(B_eye);
 

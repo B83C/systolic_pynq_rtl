@@ -7,7 +7,7 @@ task test_03_accumulation_accout0();
   errors = 0; out_count = 0;
   axil_write(REG_A_LOOP_START, 0);
   axil_write(REG_FB_CNT, 2);
-  axil_write(REG_ACC_OUT, 0);
+  axil_write(REG_ACC_CNT, 0);
   load_A();
 
   stream_mat(B1, 0);

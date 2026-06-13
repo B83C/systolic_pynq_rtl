@@ -36,7 +36,7 @@ task automatic test_17_deadlock_stress();
   $display("  [3] soft_rst during output phase");
   reset_test();
   m_axis_tready = 1;
-  axil_write(REG_ACC_OUT, 1); axil_write(REG_FB_CNT, 0);
+  axil_write(REG_ACC_CNT, 1); axil_write(REG_FB_CNT, 0);
   load_A();
   stream_mat(B1, 0);  // start output, leave LOAD_B
   repeat (5) @(posedge clk);
@@ -50,7 +50,7 @@ task automatic test_17_deadlock_stress();
   $display("  [4] Clean compute after stress");
   reset_test(); errors = 0; out_count = 0;
   m_axis_tready = 1;
-  axil_write(REG_ACC_OUT, 1); axil_write(REG_FB_CNT, 0);
+  axil_write(REG_ACC_CNT, 1); axil_write(REG_FB_CNT, 0);
   load_A();
   stream_mat(B1, 1);
   while (out_count < SIZE) @(posedge clk);

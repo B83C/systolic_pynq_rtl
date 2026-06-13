@@ -6,7 +6,7 @@ task automatic test_16_softrst_in_loadc();
   reset_test();
   errors = 0; out_count = 0;
   m_axis_tready = 1;
-  axil_write(REG_ACC_OUT, 1);
+  axil_write(REG_ACC_CNT, 1);
   axil_write(REG_FB_CNT, 0);
 
   // Enter LOAD_C

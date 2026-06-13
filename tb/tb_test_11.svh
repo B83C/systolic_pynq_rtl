@@ -6,7 +6,7 @@ task automatic test_11_ring_multi_a();
   reset_test();
   errors = 0; out_count = 0;
   m_axis_tready = 1;
-  axil_write(REG_ACC_OUT, 1);
+  axil_write(REG_ACC_CNT, 1);
   axil_write(REG_FB_CNT, 0);
 
   // Load A and A2 into 8-entry ring
