@@ -72,6 +72,9 @@ class SystolicArray:
         self.a_depth = self._probe_depth(0x1C, a_depth or 8)
         self.c_depth = self._probe_depth(0x24, c_depth or 8)
 
+        # Ensure PYNQ global state has PS DDR memory for allocate()
+        self._fix_global_state()
+
     @staticmethod
     def _check_design_present(base_addr):
         """Check if SA design is loaded by reading the state register."""
@@ -104,6 +107,35 @@ class SystolicArray:
         subprocess.run(f"echo systolic.bin > /sys/class/fpga_manager/fpga0/firmware",
                        shell=True, timeout=30)
         time.sleep(2)
+
+    @staticmethod
+    def _fix_global_state():
+        """Ensure PYNQ global state has psddr so allocate() works."""
+        import json, time
+        from pynq.pl_server.global_state import _get_state_path
+        gs_path = _get_state_path()
+        gs = {
+            "bitfile_name": "",
+            "active_name": "Pynq-Z2",
+            "timestamp": time.strftime("%Y/%m/%d %H:%M:%S"),
+            "bitfile_hash": "",
+            "shutdown_ips": {},
+            "psddr": {
+                "phys_addr": 0,
+                "addr_range": 536870912,
+                "tag": "psddr",
+                "idx": 0,
+                "used": True,
+                "base_address": 0,
+                "mem_used": 0,
+                "size": 536870912,
+                "streaming": False,
+            },
+        }
+        parent = os.path.dirname(str(gs_path))
+        os.makedirs(parent, exist_ok=True)
+        with open(gs_path, "w") as f:
+            json.dump(gs, f, indent=2)
 
     def _probe_depth(self, addr, fallback):
         """Determine ring depth by writing all-ones and reading back."""
