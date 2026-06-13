@@ -1,3 +1,6 @@
+`ifndef TB_TEST_15_SVH
+`define TB_TEST_15_SVH
+`include "tb/tb_common.svh"
 task automatic test_15_state_fuzz();
   $display("=== TEST 15: State machine fuzz ===");
 
@@ -16,14 +19,14 @@ task automatic test_15_state_fuzz();
 
   errors = 0; out_count = 0;
   m_axis_tready = 1;
-  axil_write(5'h14, 1);
-  axil_write(5'h0C, 0);
+  axil_write(REG_ACC_OUT, 1);
+  axil_write(REG_FB_CNT, 0);
 
   // [1] A_LOAD while tvalid=1 (DMA still sending B)
   $display("  [1] A_LOAD while tvalid=1 → blocked, released");
   load_A();
   s_axis_B_tvalid = 1;  @(posedge clk);
-  axil_write(5'h10, 0);
+  axil_write(REG_A_LOAD, 0);
   repeat (3) @(posedge clk);
   if (dut.state != 2'd2) begin
     $display("  FAIL[1a]: state=%0d expected LOAD_B", dut.state); errors++;
@@ -43,7 +46,7 @@ task automatic test_15_state_fuzz();
   $display("  [2] C_LOAD while tvalid=1 → blocked, released");
   load_A();
   s_axis_B_tvalid = 1;  @(posedge clk);
-  axil_write(5'h08, 0);
+  axil_write(REG_C_LOAD, 0);
   repeat (3) @(posedge clk);
   if (dut.state != 2'd2) begin
     $display("  FAIL[2a]: state=%0d", dut.state); errors++;
@@ -75,7 +78,7 @@ task automatic test_15_state_fuzz();
   soft_rst_via_axil();  repeat (5) @(posedge clk);
   if (dut.state == 2'd2) begin s_axis_B_tlast = 1; @(posedge clk); s_axis_B_tlast = 0; end
   repeat (3) @(posedge clk);
-  axil_write(5'h08, 0);  // C_LOAD only
+  axil_write(REG_C_LOAD, 0);  // C_LOAD only
   repeat (3) @(posedge clk);
   if (dut.state != 2'd3) begin
     $display("  FAIL[3a]: state=%0d expected LOAD_C", dut.state); errors++;
@@ -90,7 +93,7 @@ task automatic test_15_state_fuzz();
   soft_rst_via_axil();  repeat (5) @(posedge clk);
   if (dut.state == 2'd2) begin s_axis_B_tlast = 1; @(posedge clk); s_axis_B_tlast = 0; end
   repeat (3) @(posedge clk);
-  axil_write(5'h10, 0);
+  axil_write(REG_A_LOAD, 0);
   repeat (3) @(posedge clk);
   if (dut.state != 2'd1) begin
     $display("  FAIL[3b]: state=%0d expected LOAD_A", dut.state); errors++;
@@ -112,3 +115,4 @@ task automatic test_15_state_fuzz();
   if (errors == 0) $display("  PASS\n");
   else $display("  FAIL: %0d errors\n", errors);
 endtask
+`endif

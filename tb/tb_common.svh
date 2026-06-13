@@ -1,6 +1,21 @@
+`ifndef TB_COMMON_SVH
+`define TB_COMMON_SVH
 // -----------------------------------------------------------------------
 // Shared test data, helpers, and tasks for sa_wrapper_axi_ctrl_tb
 // -----------------------------------------------------------------------
+
+// Register address constants (matches defs.svh + wrapper)
+localparam REG_STATE        = 5'h00;
+localparam REG_STATUS       = 5'h04;
+localparam REG_C_LOAD       = 5'h08;
+localparam REG_FB_CNT       = 5'h0C;
+localparam REG_A_LOAD       = 5'h10;
+localparam REG_ACC_OUT      = 5'h14;  // unused in current RTL, kept for compat
+localparam REG_A_LOOP_START = 5'h18;
+localparam REG_A_LOOP_END   = 5'h1C;
+localparam REG_C_LOOP_START = 5'h20;
+localparam REG_C_LOOP_END   = 5'h24;
+localparam REG_RST_INDEX    = 5'h2C;
 
 // Test matrices
 int A[4][4] = '{'{10, 11, 12, 13}, '{11, 12, 13, 14}, '{12, 13, 14, 15}, '{13, 14, 15, 16}};
@@ -122,3 +137,4 @@ task check_row_str(string label, int idx, int expected[4]);
       errors++;
     end
 endtask
+`endif

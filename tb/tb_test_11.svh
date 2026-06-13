@@ -1,14 +1,17 @@
+`ifndef TB_TEST_11_SVH
+`define TB_TEST_11_SVH
+`include "tb/tb_common.svh"
 task automatic test_11_ring_multi_a();
   $display("=== TEST 11: Ring buffer — 2 A matrices, continuous B ===");
   reset_test();
   errors = 0; out_count = 0;
   m_axis_tready = 1;
-  axil_write(5'h14, 1);
-  axil_write(5'h0C, 0);
+  axil_write(REG_ACC_OUT, 1);
+  axil_write(REG_FB_CNT, 0);
 
   // Load A and A2 into 8-entry ring
-  axil_write(5'h1C, 7);
-  axil_write(5'h10, 0);
+  axil_write(REG_A_LOOP_END, 7);
+  axil_write(REG_A_LOAD, 0);
   stream_mat(A,  0);
   stream_mat(A2, 0);
   repeat (10) @(posedge clk);
@@ -65,3 +68,4 @@ task automatic test_11_ring_multi_a();
 
   if (errors == 0) $display("  PASS\n");
 endtask
+`endif

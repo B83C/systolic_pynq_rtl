@@ -1,16 +1,19 @@
+`ifndef TB_TEST_13_SVH
+`define TB_TEST_13_SVH
+`include "tb/tb_common.svh"
 task automatic test_13_c_matrix();
   $display("=== TEST 13: C matrix — A×B1 + C ===");
   reset_test();
   errors = 0; out_count = 0;
   m_axis_tready = 1;
-  axil_write(5'h14, 1);
-  axil_write(5'h0C, 0);
+  axil_write(REG_ACC_OUT, 1);
+  axil_write(REG_FB_CNT, 0);
   axil_write(6'h24, SIZE - 1);   // C_LOOP_END
   axil_write(6'h20, 0);          // C_LOOP_START
   load_A();
 
   // Trigger C_LOAD — state now IDLE (load_A used tlast=1 on A)
-  axil_write(5'h08, 0);
+  axil_write(REG_C_LOAD, 0);
   repeat (10) @(posedge clk);
 
   // Stream C data
@@ -47,3 +50,4 @@ task automatic test_13_c_matrix();
 
   if (errors == 0) $display("  PASS\n");
 endtask
+`endif

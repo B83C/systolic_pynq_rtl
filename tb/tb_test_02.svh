@@ -1,10 +1,13 @@
+`ifndef TB_TEST_02_SVH
+`define TB_TEST_02_SVH
+`include "tb/tb_common.svh"
 task test_02_backtoback();
   $display("=== TEST 2: Back-to-back (B1, B2, B1) with tlast ===");
   reset_test();
   errors = 0; out_count = 0;
-  axil_write(5'h18, 0);
-  axil_write(5'h0C, 0);
-  axil_write(5'h14, 1);
+  axil_write(REG_A_LOOP_START, 0);
+  axil_write(REG_FB_CNT, 0);
+  axil_write(REG_ACC_OUT, 1);
   load_A();
 
   stream_mat(B1, 0);
@@ -33,3 +36,4 @@ task test_02_backtoback();
   end
   if (errors == 0) $display("  PASS\n");
 endtask
+`endif

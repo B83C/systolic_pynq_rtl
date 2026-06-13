@@ -1,3 +1,6 @@
+`ifndef TB_TEST_12_SVH
+`define TB_TEST_12_SVH
+`include "tb/tb_common.svh"
 task automatic test_12_ring_accumulation();
   $display("=== TEST 12: Ring buffer — 2 A matrices, accumulation ===");
   reset_test();
@@ -5,15 +8,15 @@ task automatic test_12_ring_accumulation();
   m_axis_tready = 1;
 
   // Load A and A2 into 8-entry ring
-  axil_write(5'h1C, 7);
-  axil_write(5'h10, 0);
+  axil_write(REG_A_LOOP_END, 7);
+  axil_write(REG_A_LOAD, 0);
   stream_mat(A,  0);
   stream_mat(A2, 0);
   repeat (10) @(posedge clk);
 
   // FB_CNT=2, acc_out=1 — show both individual and accumulated
-  axil_write(5'h0C, 2);
-  axil_write(5'h14, 1);
+  axil_write(REG_FB_CNT, 2);
+  axil_write(REG_ACC_OUT, 1);
 
   // 3 B matrices: B1 (uses A), B2 (uses A2), B3 (uses A again, triggers reset)
   stream_mat(B1, 0);
@@ -47,3 +50,4 @@ task automatic test_12_ring_accumulation();
 
   if (errors == 0) $display("  PASS\n");
 endtask
+`endif

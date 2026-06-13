@@ -1,3 +1,6 @@
+`ifndef TB_TEST_18_SVH
+`define TB_TEST_18_SVH
+`include "tb/tb_common.svh"
 task test_18_single_element_ring();
   $display("=== TEST 18: Single-element ring (start==end) ===");
   errors = 0; out_count = 0;
@@ -9,11 +12,11 @@ task test_18_single_element_ring();
   repeat (3) @(posedge clk);
 
   // Set a_loop_start = a_loop_end = 0 → single-element ring
-  axil_write(5'h18, 0);
-  axil_write(5'h1C, 0);
+  axil_write(REG_A_LOOP_START, 0);
+  axil_write(REG_A_LOOP_END, 0);
 
   // Trigger A_LOAD
-  axil_write(5'h10, 0);
+  axil_write(REG_A_LOAD, 0);
   repeat (3) @(posedge clk);
   if (dut.state != 2'd1) begin
     $display("  FAIL[1]: state=%0d expected LOAD_A", dut.state); errors++;
@@ -42,8 +45,8 @@ task test_18_single_element_ring();
   end else $display("    state exited LOAD_A (state=%0d)", dut.state);
 
   // Now do a clean full compute to verify normal ring still works after restore
-  axil_write(5'h18, 0);
-  axil_write(5'h1C, SIZE - 1);
+  axil_write(REG_A_LOOP_START, 0);
+  axil_write(REG_A_LOOP_END, SIZE - 1);
   out_count = 0;
   load_A();
   stream_mat(B1, 1);
@@ -55,3 +58,4 @@ task test_18_single_element_ring();
   if (errors == 0) $display("  PASS\n");
   else $display("  FAIL: %0d errors\n", errors);
 endtask
+`endif

@@ -1,10 +1,13 @@
+`ifndef TB_TEST_04_SVH
+`define TB_TEST_04_SVH
+`include "tb/tb_common.svh"
 task test_04_accumulation_accout1();
   $display("=== TEST 4: FB_CNT=2, acc_out=1 (show all) ===");
   reset_test();
   errors = 0; out_count = 0;
-  axil_write(5'h18, 0);
-  axil_write(5'h0C, 2);
-  axil_write(5'h14, 1);
+  axil_write(REG_A_LOOP_START, 0);
+  axil_write(REG_FB_CNT, 2);
+  axil_write(REG_ACC_OUT, 1);
   load_A();
 
   stream_mat(B1, 0);
@@ -32,3 +35,4 @@ task test_04_accumulation_accout1();
 
   if (errors == 0) $display("  PASS (individual + accumulated visible)\n");
 endtask
+`endif

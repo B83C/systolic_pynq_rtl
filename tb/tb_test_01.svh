@@ -1,8 +1,11 @@
+`ifndef TB_TEST_01_SVH
+`define TB_TEST_01_SVH
+`include "tb/tb_common.svh"
 task test_01_single_multiply();
   $display("=== TEST 1: Single multiply, no accumulation ===");
   errors = 0; out_count = 0;
-  axil_write(5'h0C, 0);
-  axil_write(5'h14, 1);
+  axil_write(REG_FB_CNT, 0);
+  axil_write(REG_ACC_OUT, 1);
   load_A();
   stream_mat(B1);
 
@@ -23,3 +26,4 @@ task test_01_single_multiply();
   if (errors == 0) $display("  PASS\n");
   else $display("  FAIL: %0d errors\n", errors);
 endtask
+`endif

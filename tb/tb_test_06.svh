@@ -1,10 +1,13 @@
+`ifndef TB_TEST_06_SVH
+`define TB_TEST_06_SVH
+`include "tb/tb_common.svh"
 task test_06_consecutive_groups();
   $display("=== TEST 6: Two consecutive groups (6 matrices, FB_CNT=2) ===");
   reset_test();
   errors = 0; out_count = 0;
-  axil_write(5'h18, 0);
-  axil_write(5'h0C, 2);
-  axil_write(5'h14, 1);
+  axil_write(REG_A_LOOP_START, 0);
+  axil_write(REG_FB_CNT, 2);
+  axil_write(REG_ACC_OUT, 1);
   load_A();
 
   stream_mat(B1, 0);
@@ -48,3 +51,4 @@ task test_06_consecutive_groups();
 
   if (errors == 0) $display("  PASS\n");
 endtask
+`endif

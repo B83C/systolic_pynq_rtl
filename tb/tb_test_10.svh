@@ -1,11 +1,14 @@
+`ifndef TB_TEST_10_SVH
+`define TB_TEST_10_SVH
+`include "tb/tb_common.svh"
 task automatic test_10_random_backpressure();
   $display("=== TEST 10: Random output back-pressure (5 matrices) ===");
   reset_test();
   errors = 0; out_count = 0;
   m_axis_tready = 1;
-  axil_write(5'h18, 0);
-  axil_write(5'h0C, 0);
-  axil_write(5'h14, 1);
+  axil_write(REG_A_LOOP_START, 0);
+  axil_write(REG_FB_CNT, 0);
+  axil_write(REG_ACC_OUT, 1);
   load_A();
 
   stream_mat(B1, 0);  repeat (8) @(posedge clk);
@@ -59,3 +62,4 @@ task automatic test_10_random_backpressure();
 
   if (errors == 0) $display("  PASS\n");
 endtask
+`endif

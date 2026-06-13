@@ -1,10 +1,13 @@
+`ifndef TB_TEST_03_SVH
+`define TB_TEST_03_SVH
+`include "tb/tb_common.svh"
 task test_03_accumulation_accout0();
   $display("=== TEST 3: FB_CNT=2, acc_out=0 ===");
   reset_test();
   errors = 0; out_count = 0;
-  axil_write(5'h18, 0);
-  axil_write(5'h0C, 2);
-  axil_write(5'h14, 0);
+  axil_write(REG_A_LOOP_START, 0);
+  axil_write(REG_FB_CNT, 2);
+  axil_write(REG_ACC_OUT, 0);
   load_A();
 
   stream_mat(B1, 0);
@@ -27,3 +30,4 @@ task test_03_accumulation_accout0();
     if (errors == 0) $display("  final accumulated correct\n");
   end
 endtask
+`endif

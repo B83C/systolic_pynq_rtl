@@ -1,16 +1,19 @@
+`ifndef TB_TEST_16_SVH
+`define TB_TEST_16_SVH
+`include "tb/tb_common.svh"
 task automatic test_16_softrst_in_loadc();
   $display("=== TEST 16: soft_reset in LOAD_C → A_LOAD ===");
   reset_test();
   errors = 0; out_count = 0;
   m_axis_tready = 1;
-  axil_write(5'h14, 1);
-  axil_write(5'h0C, 0);
+  axil_write(REG_ACC_OUT, 1);
+  axil_write(REG_FB_CNT, 0);
 
   // Enter LOAD_C
   $display("  [1] Enter LOAD_C, stream 2 of 4 C values...");
   load_A();
   axil_write(6'h24, SIZE - 1);
-  axil_write(5'h08, 0);
+  axil_write(REG_C_LOAD, 0);
   repeat (5) @(posedge clk);
   // Stream only 2 C values (incomplete)
   for (int i = 0; i < 2; i++) begin
@@ -34,7 +37,7 @@ task automatic test_16_softrst_in_loadc();
   $display("  [3] Load A, reload C as zeros, then compute");
   load_A();
   // Optional: reload C with zeros
-  axil_write(5'h08, 0);
+  axil_write(REG_C_LOAD, 0);
   repeat (5) @(posedge clk);
   for (int i = 0; i < SIZE; i++) begin
     @(posedge clk); s_axis_B_tdata = 0; s_axis_B_tvalid = 1; s_axis_B_tlast = 0;
@@ -51,3 +54,4 @@ task automatic test_16_softrst_in_loadc();
   if (errors == 0) $display("  PASS\n");
   else $display("  FAIL: %0d errors\n", errors);
 endtask
+`endif

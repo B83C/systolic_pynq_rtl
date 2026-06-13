@@ -1,11 +1,14 @@
+`ifndef TB_TEST_14_SVH
+`define TB_TEST_14_SVH
+`include "tb/tb_common.svh"
 task automatic test_14_negative();
   $display("=== TEST 14: Signed multiply — negative B ===");
   reset_test();
   errors = 0; out_count = 0;
   m_axis_tready = 1;
-  axil_write(5'h18, 0);
-  axil_write(5'h0C, 0);
-  axil_write(5'h14, 1);
+  axil_write(REG_A_LOOP_START, 0);
+  axil_write(REG_FB_CNT, 0);
+  axil_write(REG_ACC_OUT, 1);
   load_A();
 
   $display("  Expected row 0: %0d %0d %0d %0d",
@@ -26,3 +29,4 @@ task automatic test_14_negative();
   if (errors == 0) $display("  PASS\n");
   else $display("  FAIL: %0d errors\n", errors);
 endtask
+`endif

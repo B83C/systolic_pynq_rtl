@@ -1,10 +1,13 @@
+`ifndef TB_TEST_05_SVH
+`define TB_TEST_05_SVH
+`include "tb/tb_common.svh"
 task test_05_eye();
   $display("=== TEST 5: A×Eye (= A) ===");
   reset_test();
   errors = 0; out_count = 0;
-  axil_write(5'h18, 0);
-  axil_write(5'h0C, 0);
-  axil_write(5'h14, 1);
+  axil_write(REG_A_LOOP_START, 0);
+  axil_write(REG_FB_CNT, 0);
+  axil_write(REG_ACC_OUT, 1);
   load_A();
   stream_mat(B_eye);
 
@@ -15,7 +18,7 @@ task test_05_eye();
 
   begin
     automatic logic [31:0] rd;
-    axil_read(5'h04, rd);
+    axil_read(REG_STATUS, rd);
     if (rd[0] !== 0) begin
       $display("  FAIL: unexpected b_underflow=1 after normal matrix");
       errors++;
@@ -24,3 +27,4 @@ task test_05_eye();
 
   if (errors == 0) $display("  PASS\n");
 endtask
+`endif
