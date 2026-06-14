@@ -50,12 +50,17 @@ class SystolicArray:
     REG_C_LOAD = 0x08  # WO  write to trigger C_LOAD
     REG_FB_CNT = 0x0C  # RW  accumulation group size (0=off)
     REG_A_LOAD = 0x10  # WO  write to trigger A_LOAD
-    REG_ACC_OUT = 0x14  # RW  [0] enable output during accumulation
+    REG_ACC_CNT = 0x14  # RO  current accumulation counter value
     REG_A_LOOP_START = 0x18  # RW  A ring start index
     REG_A_LOOP_END = 0x1C  # RW  A ring end index
     REG_C_LOOP_START = 0x20  # RW  C ring start index
     REG_C_LOOP_END = 0x24  # RW  C ring end index
+    REG_SIZE = 0x28  # RO  array dimension parameter
     REG_RST_INDEX = 0x2C  # WO  soft-reset indices and state
+    REG_MUL_Q = 0x30  # RW  UINT16 quantized multiplier
+    REG_SHIFT = 0x34  # RW  UINT5  right-shift amount
+    REG_ZP_OUT = 0x38  # RW  INT8   output zero-point
+    REG_ZP_IN = 0x3C  # RW  INT8   input zero-point
 
     # State enum (from defs.svh)
     STATE_IDLE = 0

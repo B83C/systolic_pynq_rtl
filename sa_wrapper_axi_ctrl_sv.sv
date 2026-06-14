@@ -98,8 +98,10 @@ module sa_wrapper_axi_ctrl_sv #(
   // 0x24  C_LOOP_END:   last ring index for C
   // 0x28  SIZE:         RO  array dimension parameter value
   // 0x2C  RST_INDEX:    write to reset ring pointers and pending flags
-  // 0x30  Q_LOAD:       write to trigger Q ring loading
-  // 0x34  ZP_IN:        RW  input zero-point (INT8)
+  // 0x30  MUL_Q:        RW  UINT16 quantized multiplier
+  // 0x34  SHIFT:        RW  UINT5  right-shift amount
+  // 0x38  ZP_OUT:       RW  INT8   output zero-point
+  // 0x3C  ZP_IN:        RW  INT8   input zero-point (subtracted from B before PE)
 
   reg b_underflow;
   reg [7:0] acc_cnt;
