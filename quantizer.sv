@@ -1,8 +1,7 @@
 `timescale 1ns / 1ps
 
 // Quantizer:  q_out = clamp(((acc * mul_q) >>> shift) + zp_out, -128, 127)
-// 2 pipeline stages: S1 = DSP+shift → reg, S2 = add_zp+clamp → reg
-// Breaks both the DSP cascade and the CARRY4 comparator chains.
+// 3 pipeline stages: S0 = input reg, S1 = DSP+shift → reg, S2 = add_zp+clamp → reg
 
 module quantizer #(
     parameter unsigned SIZE           = 4,
@@ -35,8 +34,9 @@ module quantizer #(
         end
     endgenerate
 
-    wire signed [ACCUM_WIDTH+15:0] q_prod[SIZE];
-    wire signed [ACCUM_WIDTH+15:0] q_shifted[SIZE];
+    // -- stage 0 registers (raw accumulator input) --
+    logic signed [ACCUM_WIDTH-1:0] acc_r[SIZE];
+    logic s0_valid, s0_last;
 
     // -- stage 1 registers (after DSP+shift) --
     logic signed [ACCUM_WIDTH+15:0] q_shifted_r[SIZE];
@@ -46,10 +46,12 @@ module quantizer #(
     logic signed [7:0] q_out_r[SIZE];
     logic s2_valid, s2_last;
 
+    wire signed [ACCUM_WIDTH+15:0] q_prod[SIZE];
+    wire signed [ACCUM_WIDTH+15:0] q_shifted[SIZE];
     generate
         for (genvar qi = 0; qi < SIZE; qi++) begin : gen_quant
             (* use_dsp = "yes" *)
-            assign q_prod[qi]   = $signed(acc[qi]) * $signed({16'h0, mul_q});
+            assign q_prod[qi]   = $signed(acc_r[qi]) * $signed({16'h0, mul_q});
             assign q_shifted[qi] = $signed(q_prod[qi]) >>> shift;
         end
     endgenerate
@@ -68,15 +70,22 @@ module quantizer #(
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
+            acc_r       <= '{default: 0};
             q_shifted_r <= '{default: 0};
             q_out_r     <= '{default: 0};
+            s0_valid <= 0; s0_last <= 0;
             s1_valid <= 0; s1_last <= 0;
             s2_valid <= 0; s2_last <= 0;
         end else begin
+            // stage 0: register raw input
+            acc_r    <= acc;
+            s0_valid <= s_axis_tvalid;
+            s0_last  <= s_axis_tvalid && s_axis_tlast;
+
             // stage 1: register after DSP+shift
             q_shifted_r <= q_shifted;
-            s1_valid <= s_axis_tvalid;
-            s1_last  <= s_axis_tvalid && s_axis_tlast;
+            s1_valid <= s0_valid;
+            s1_last  <= s0_last;
 
             // stage 2: register after add_zp+clamp
             q_out_r  <= q_out;
