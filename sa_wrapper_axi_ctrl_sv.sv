@@ -66,7 +66,6 @@ module sa_wrapper_axi_ctrl_sv #(
   wire  b_consume = operate && (state == LOAD_B);
   wire  a_consume = operate && (state == LOAD_A);
   wire  c_consume = operate && (state == LOAD_C);
-  wire  q_consume = operate && (state == LOAD_Q);
 
   wire  output_stalled = output_going_on && !m_axis_tready;
 
@@ -84,9 +83,6 @@ module sa_wrapper_axi_ctrl_sv #(
   logic [DATA_WIDTH_OUT-1:0] c_ring[C_DEPTH * SIZE];
   logic [C_RING_ADDR_W-1:0] c_rd_ptr;
 
-  // Q ring: per-row quant params {zp_out[7:0], mul_q[15:0], shift[4:0], 3'b0}
-  logic [31:0] q_ring[A_RING_DEPTH];
-  logic [A_RING_ADDR_W-1:0] q_wr_ptr;
 
   // AXI-Lite registers (6-bit addresses, 0x00..0x3F)
   // 0x00  CTRL:         [0]=state (RO)
@@ -109,12 +105,13 @@ module sa_wrapper_axi_ctrl_sv #(
   wire [7:0] current_acc_count;
   reg a_load_pending;
   reg c_load_pending;
-  reg q_load_pending;
   reg signed [7:0] zp_in;
+  reg [15:0] mul_q;
+  reg [4:0] shift;
+  reg signed [7:0] zp_out;
   reg soft_rst;
   reg a_loop_active;
   reg c_loop_active;
-  reg q_loop_active;
   reg [A_RING_ADDR_W-1:0] a_loop_start;
   reg [A_RING_ADDR_W-1:0] a_loop_end;
   reg [C_RING_ADDR_W-1:0] c_loop_start;
@@ -139,9 +136,7 @@ module sa_wrapper_axi_ctrl_sv #(
   always_comb begin
     unique case (state)
       IDLE: begin
-        if (q_load_pending) begin
-          state_nxt = LOAD_Q;
-        end else if (c_load_pending) begin
+        if (c_load_pending) begin
           state_nxt = LOAD_C;
         end else if (a_load_pending) begin
           state_nxt = LOAD_A;
@@ -163,18 +158,10 @@ module sa_wrapper_axi_ctrl_sv #(
           state_nxt = LOAD_C;
         end
       end
-      LOAD_Q: begin
-        if ((q_wr_ptr == a_loop_end && q_loop_active) || (state == LOAD_Q && s_axis_B_tlast)) begin
-          state_nxt = IDLE;
-        end else begin
-          state_nxt = LOAD_Q;
-        end
-      end
+
       LOAD_B: begin
         if (s_axis_B_tlast) begin
           state_nxt = IDLE;
-        end else if (q_load_pending && !operate) begin
-          state_nxt = LOAD_Q;
         end else if (c_load_pending && !operate) begin
           state_nxt = LOAD_C;
         end else if (a_load_pending && !operate) begin
@@ -191,22 +178,18 @@ module sa_wrapper_axi_ctrl_sv #(
       state <= IDLE;
       a_loop_active <= 0;
       c_loop_active <= 0;
-      q_loop_active <= 0;
     end else if (soft_rst) begin
       state <= IDLE;
       a_loop_active <= 0;
       c_loop_active <= 0;
-      q_loop_active <= 0;
     end else begin
       state <= state_nxt;
       if (state_nxt != state) begin
         a_loop_active <= 0;
         c_loop_active <= 0;
-        q_loop_active <= 0;
-      end else begin
+        end else begin
         if (a_consume) a_loop_active <= 1;
         if (c_consume) c_loop_active <= 1;
-        if (q_consume) q_loop_active <= 1;
       end
     end
   end
@@ -222,7 +205,9 @@ module sa_wrapper_axi_ctrl_sv #(
       b_underflow   <= 0;
       soft_rst      <= 0;
       zp_in         <= 0;
-      q_loaded      <= 0;
+      mul_q         <= 0;
+      shift         <= 0;
+      zp_out        <= 0;
       s_axil_bvalid <= 0;
       s_axil_rvalid <= 0;
       s_axil_rdata  <= 0;
@@ -234,8 +219,10 @@ module sa_wrapper_axi_ctrl_sv #(
           REG_C_LOAD: c_load_pending <= 1;
           REG_A_LOAD: a_load_pending <= 1;
           REG_A_LOOP_START: a_loop_start <= s_axil_wdata[A_RING_ADDR_W-1:0];
-          REG_Q_LOAD:   q_load_pending <= 1;
           REG_ZP_IN:    zp_in <= s_axil_wdata[7:0];
+          REG_MUL_Q:    mul_q <= s_axil_wdata[15:0];
+          REG_SHIFT:    shift <= s_axil_wdata[4:0];
+          REG_ZP_OUT:   zp_out <= s_axil_wdata[7:0];
           REG_A_LOOP_END: a_loop_end <= s_axil_wdata[A_RING_ADDR_W-1:0];
           REG_C_LOOP_START: c_loop_start <= s_axil_wdata[C_RING_ADDR_W-1:0];
           REG_C_LOOP_END: c_loop_end <= s_axil_wdata[C_RING_ADDR_W-1:0];
@@ -278,10 +265,7 @@ module sa_wrapper_axi_ctrl_sv #(
       if (state == LOAD_C && c_load_pending) begin
         c_load_pending <= 0;
       end
-      if (state == LOAD_Q && q_load_pending) begin
-        q_load_pending <= 0;
-        q_loaded <= 1;
-      end
+
 
       // RST_INDEX: trigger soft reset pulse
       if (axil_wr_en && (s_axil_awaddr == REG_RST_INDEX)) begin
@@ -369,24 +353,14 @@ module sa_wrapper_axi_ctrl_sv #(
       if (state_nxt != state) begin
         a_rd_ptr <= a_loop_start;
       end
-      if (state_nxt != state && state_nxt == LOAD_Q) begin
-        q_wr_ptr <= a_loop_start;
-      end
+
       if (a_consume) begin
         a_ring[a_rd_ptr] <= s_axis_B_tdata;
         if (a_rd_ptr == a_loop_end) begin
           a_rd_ptr <= a_loop_start;
         end else begin
           a_rd_ptr <= a_rd_ptr + 1;
-        end
-      end else if (q_consume) begin
-        q_ring[q_wr_ptr] <= s_axis_B_tdata[31:0];
-        if (q_wr_ptr == a_loop_end) begin
-          q_wr_ptr <= a_loop_start;
-        end else begin
-          q_wr_ptr <= q_wr_ptr + 1;
-        end
-      end else if (b_consume) begin
+        end end else if (b_consume) begin
         if (a_rd_ptr == a_loop_end) begin
           a_rd_ptr <= a_loop_start;
         end else begin
@@ -416,7 +390,6 @@ module sa_wrapper_axi_ctrl_sv #(
       end
     end
   end
-
 
 
   counter #(
@@ -504,13 +477,15 @@ module sa_wrapper_axi_ctrl_sv #(
     end
   end
 
-  // Output quantization (bypassed when Q not loaded)
-  wire [31:0] q_entry = q_ring[a_rd_ptr];
-  wire signed [7:0] q_zp_out = q_entry[31:24];
-  wire [15:0] q_mul = q_entry[23:8];
-  wire [4:0]  q_shift = q_entry[7:3];
-  reg q_loaded;
-  wire q_bypass = !q_loaded;
+  // ---- Quantization + pipelined output ----
+  // Registers written via AXI-Lite
+  // mul_q[15:0], shift[4:0], zp_out[7:0], zp_in[7:0]
+  // Quant: q_out = clamp(((result * mul_q) >>> shift) + zp_out, -128, 127)
+  //
+  // Output pipeline register with back-pressure:
+  //   pipe_valid / pipe_data / pipe_last – registered versions
+  //   Stalls when !m_axis_tready
+
   wire signed [DATA_WIDTH_OUT+15:0] q_prod[SIZE];
   wire signed [DATA_WIDTH_OUT+15:0] q_shifted[SIZE];
   wire signed [15:0] q_with_zp[SIZE];
@@ -518,22 +493,45 @@ module sa_wrapper_axi_ctrl_sv #(
   generate
     for (genvar qi = 0; qi < SIZE; qi++) begin : gen_quant
       (* use_dsp = "yes" *)
-      assign q_prod[qi] = $signed(result_row[qi]) * $signed({16'h0, q_mul});
-      assign q_shifted[qi] = $signed(q_prod[qi]) >>> q_shift;
-      assign q_with_zp[qi] = $signed(q_shifted[qi][15:0]) + $signed(q_zp_out);
-      assign q_out[qi] = (q_with_zp[qi] > 127) ? 8'sd127 :
-                         (q_with_zp[qi] < -128) ? -8'sd128 :
-                         q_with_zp[qi][7:0];
+      assign q_prod[qi]    = $signed(result_row[qi]) * $signed({16'h0, mul_q});
+      assign q_shifted[qi] = $signed(q_prod[qi]) >>> shift;
+      assign q_with_zp[qi] = $signed(q_shifted[qi][15:0]) + $signed(zp_out);
+      assign q_out[qi]     = (q_with_zp[qi] > 127) ? 8'sd127 :
+                              (q_with_zp[qi] < -128) ? -8'sd128 :
+                              q_with_zp[qi][7:0];
     end
   endgenerate
 
-  assign m_axis_tvalid = output_valid;
-  generate
-    for (genvar qi = 0; qi < SIZE; qi++) begin : gen_q_tdata
-      assign m_axis_tdata[qi*DATA_WIDTH_OUT+:DATA_WIDTH_OUT] = q_bypass ? result_row[qi] :
-             {{(DATA_WIDTH_OUT-8){q_out[qi][7]}}, q_out[qi]};
+  // Pipeline registers (combinational full update, stalled by back-pressure)
+  reg pipe_valid;
+  reg [AXI_OUT_WIDTH-1:0] pipe_data;
+  reg pipe_last;
+  wire pipe_advance = !pipe_valid || m_axis_tready;
+
+  always @(posedge clk, negedge rst_n) begin
+    if (!rst_n) begin
+      pipe_valid <= 0;
+      pipe_last  <= 0;
+      pipe_data  <= 0;
+    end else if (soft_rst) begin
+      pipe_valid <= 0;
+      pipe_last  <= 0;
+      pipe_data  <= 0;
+    end else if (pipe_advance) begin
+      pipe_valid <= output_valid;
+      pipe_last  <= output_last && output_valid;
+      for (int qi = 0; qi < SIZE; qi++)
+        if (mul_q == 0)
+          pipe_data[qi*DATA_WIDTH_OUT+:DATA_WIDTH_OUT] <= result_row[qi];
+        else
+          pipe_data[qi*DATA_WIDTH_OUT+:DATA_WIDTH_OUT] <=
+            {{(DATA_WIDTH_OUT-8){q_out[qi][7]}}, q_out[qi]};
     end
-  endgenerate
-  assign m_axis_tlast  = output_last && output_valid;
+    // else stall: keep current values
+  end
+
+  assign m_axis_tvalid = pipe_valid;
+  assign m_axis_tdata  = pipe_data;
+  assign m_axis_tlast  = pipe_last;
 
 endmodule
