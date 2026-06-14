@@ -1,6 +1,10 @@
 `timescale 1ns / 1ps
 
-module quantizer_wrapper (
+module quantizer_wrapper #(
+    parameter unsigned SIZE          = 4,
+    parameter unsigned DATA_WIDTH_IN = 32,
+    parameter unsigned ACCUM_WIDTH   = 32
+) (
     input  wire         clk,
     input  wire         rst_n,
 
@@ -8,21 +12,21 @@ module quantizer_wrapper (
     input  wire [ 4:0]  shift,
     input  wire [ 7:0]  zp_out,
 
-    input  wire [127:0] s_axis_tdata,
-    input  wire         s_axis_tvalid,
-    output wire         s_axis_tready,
-    input  wire         s_axis_tlast,
+    input  wire [SIZE*DATA_WIDTH_IN-1:0] s_axis_tdata,
+    input  wire                          s_axis_tvalid,
+    output wire                          s_axis_tready,
+    input  wire                          s_axis_tlast,
 
-    output wire [ 31:0] m_axis_tdata,
-    output wire         m_axis_tvalid,
-    input  wire         m_axis_tready,
-    output wire         m_axis_tlast
+    output wire [SIZE*8-1:0] m_axis_tdata,
+    output wire               m_axis_tvalid,
+    input  wire               m_axis_tready,
+    output wire               m_axis_tlast
 );
 
     quantizer #(
-        .SIZE         (4),
-        .DATA_WIDTH_IN(32),
-        .ACCUM_WIDTH  (32)
+        .SIZE         (SIZE),
+        .DATA_WIDTH_IN(DATA_WIDTH_IN),
+        .ACCUM_WIDTH  (ACCUM_WIDTH)
     ) u_quant (
         .clk,
         .rst_n,
