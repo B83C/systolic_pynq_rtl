@@ -6,7 +6,8 @@ module sa_wrapper_axi_ctrl_sv #(
     parameter  unsigned A_DEPTH        = 4,
     parameter  unsigned C_DEPTH        = 4,
     parameter  unsigned DATA_WIDTH_IN  = 8,
-    parameter  unsigned DATA_WIDTH_OUT = 32,
+    parameter  unsigned DATA_WIDTH_OUT = 8,
+    parameter  unsigned ACCUM_WIDTH    = 32,
     localparam unsigned AXI_IN_WIDTH   = SIZE * DATA_WIDTH_IN,
     localparam unsigned AXI_OUT_WIDTH  = SIZE * DATA_WIDTH_OUT,
     localparam unsigned AXI_ADDR_W     = 6
@@ -74,13 +75,13 @@ module sa_wrapper_axi_ctrl_sv #(
   logic [DATA_WIDTH_IN-1:0] a_ring_internal[SIZE][SIZE];
   logic [DATA_WIDTH_IN-1:0] a_row[SIZE];
   logic [DATA_WIDTH_IN-1:0] b_row[SIZE][SIZE];
-  logic [DATA_WIDTH_OUT-1:0] c_row[SIZE];
-  logic [DATA_WIDTH_OUT-1:0] result_row[SIZE];
+  logic [ACCUM_WIDTH-1:0] c_row[SIZE];
+  logic [ACCUM_WIDTH-1:0] result_row[SIZE];
 
   logic [(DATA_WIDTH_IN * SIZE)-1:0] a_ring[A_RING_DEPTH];
   logic [A_RING_ADDR_W-1:0] a_rd_ptr;
 
-  logic [DATA_WIDTH_OUT-1:0] c_ring[C_DEPTH * SIZE];
+  logic [ACCUM_WIDTH-1:0] c_ring[C_DEPTH * SIZE];
   logic [C_RING_ADDR_W-1:0] c_rd_ptr;
 
 
@@ -187,7 +188,7 @@ module sa_wrapper_axi_ctrl_sv #(
       if (state_nxt != state) begin
         a_loop_active <= 0;
         c_loop_active <= 0;
-        end else begin
+      end else begin
         if (a_consume) a_loop_active <= 1;
         if (c_consume) c_loop_active <= 1;
       end
@@ -240,20 +241,20 @@ module sa_wrapper_axi_ctrl_sv #(
 
       if (axil_rd_en) begin
         case (s_axil_araddr)
-          REG_STATE: s_axil_rdata <= state;
+          REG_STATE:        s_axil_rdata <= state;
           REG_STATUS: begin
             s_axil_rdata <= {29'h0, can_output, s_axis_B_tvalid, b_underflow};
             b_underflow  <= 0;
           end
-          REG_FB_CNT: s_axil_rdata <= {24'h0, acc_cnt};
-          REG_ACC_CNT: s_axil_rdata <= {24'h0, current_acc_count};
-          REG_A_LOAD: s_axil_rdata <= {31'h0, a_load_pending};
+          REG_FB_CNT:       s_axil_rdata <= {24'h0, acc_cnt};
+          REG_ACC_CNT:      s_axil_rdata <= {24'h0, current_acc_count};
+          REG_A_LOAD:       s_axil_rdata <= {31'h0, a_load_pending};
           REG_A_LOOP_START: s_axil_rdata <= {{32 - A_RING_ADDR_W{1'h0}}, a_loop_start};
-          REG_A_LOOP_END: s_axil_rdata <= {{32 - A_RING_ADDR_W{1'h0}}, a_loop_end};
+          REG_A_LOOP_END:   s_axil_rdata <= {{32 - A_RING_ADDR_W{1'h0}}, a_loop_end};
           REG_C_LOOP_START: s_axil_rdata <= {{32 - C_RING_ADDR_W{1'h0}}, c_loop_start};
           REG_C_LOOP_END:   s_axil_rdata <= {{32 - C_RING_ADDR_W{1'h0}}, c_loop_end};
-          REG_SIZE:     s_axil_rdata <= SIZE;
-          default: s_axil_rdata <= 32'h0;
+          REG_SIZE:         s_axil_rdata <= SIZE;
+          default:          s_axil_rdata <= 32'h0;
         endcase
         s_axil_rvalid <= 1;
       end else if (s_axil_rready) begin
@@ -360,7 +361,8 @@ module sa_wrapper_axi_ctrl_sv #(
           a_rd_ptr <= a_loop_start;
         end else begin
           a_rd_ptr <= a_rd_ptr + 1;
-        end end else if (b_consume) begin
+        end
+      end else if (b_consume) begin
         if (a_rd_ptr == a_loop_end) begin
           a_rd_ptr <= a_loop_start;
         end else begin
@@ -381,7 +383,7 @@ module sa_wrapper_axi_ctrl_sv #(
         c_rd_ptr <= c_loop_start;
       end
       if (c_consume) begin
-        c_ring[c_rd_ptr] <= s_axis_B_tdata[DATA_WIDTH_OUT-1:0];
+        c_ring[c_rd_ptr] <= s_axis_B_tdata[ACCUM_WIDTH-1:0];
         if (c_rd_ptr == c_loop_end) c_rd_ptr <= c_loop_start;
         else c_rd_ptr <= c_rd_ptr + 1;
       end else if (new_batch && b_consume) begin
@@ -413,7 +415,7 @@ module sa_wrapper_axi_ctrl_sv #(
     end
   end
 
-  wire [DATA_WIDTH_OUT-1:0] c_row_final[SIZE];
+  wire [ACCUM_WIDTH-1:0] c_row_final[SIZE];
   always @(posedge clk, negedge rst_n) begin
     if (!rst_n) begin
       c_row <= '{default: '0};
@@ -451,7 +453,8 @@ module sa_wrapper_axi_ctrl_sv #(
   SA #(
       .SIZE(SIZE),
       .DATA_WIDTH_IN(DATA_WIDTH_IN),
-      .DATA_WIDTH_OUT(DATA_WIDTH_OUT)
+      .DATA_WIDTH_OUT(DATA_WIDTH_OUT),
+      .ACCUM_WIDTH(ACCUM_WIDTH)
   ) sa_core (
       .clk       (clk),
       .rst_n     (rst_n),
@@ -486,14 +489,14 @@ module sa_wrapper_axi_ctrl_sv #(
   //   pipe_valid / pipe_data / pipe_last – registered versions
   //   Stalls when !m_axis_tready
 
-  wire signed [DATA_WIDTH_OUT+15:0] q_prod[SIZE];
-  wire signed [DATA_WIDTH_OUT+15:0] q_shifted[SIZE];
+  wire signed [ACCUM_WIDTH+15:0] q_prod[SIZE];
+  wire signed [ACCUM_WIDTH+15:0] q_shifted[SIZE];
   wire signed [15:0] q_with_zp[SIZE];
   wire signed [7:0] q_out[SIZE];
   generate
     for (genvar qi = 0; qi < SIZE; qi++) begin : gen_quant
       (* use_dsp = "yes" *)
-      assign q_prod[qi]    = $signed(result_row[qi]) * $signed({16'h0, mul_q});
+      assign q_prod[qi] = $signed(result_row[qi]) * $signed({16'h0, mul_q});
       assign q_shifted[qi] = $signed(q_prod[qi]) >>> shift;
       assign q_with_zp[qi] = $signed(q_shifted[qi][15:0]) + $signed(zp_out);
       assign q_out[qi]     = (q_with_zp[qi] > 127) ? 8'sd127 :
@@ -521,11 +524,11 @@ module sa_wrapper_axi_ctrl_sv #(
       pipe_valid <= output_valid;
       pipe_last  <= output_last && output_valid;
       for (int qi = 0; qi < SIZE; qi++)
-        if (mul_q == 0)
-          pipe_data[qi*DATA_WIDTH_OUT+:DATA_WIDTH_OUT] <= result_row[qi];
-        else
-          pipe_data[qi*DATA_WIDTH_OUT+:DATA_WIDTH_OUT] <=
-            {{(DATA_WIDTH_OUT-8){q_out[qi][7]}}, q_out[qi]};
+      if (mul_q == 0) pipe_data[qi*DATA_WIDTH_OUT+:DATA_WIDTH_OUT] <= result_row[qi];
+      else
+        pipe_data[qi*DATA_WIDTH_OUT+:DATA_WIDTH_OUT] <= {
+          {(DATA_WIDTH_OUT - 8) {q_out[qi][7]}}, q_out[qi]
+        };
     end
     // else stall: keep current values
   end
