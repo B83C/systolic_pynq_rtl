@@ -27,6 +27,7 @@ module quantizer_wrapper #(
     quantizer #(
         .SIZE         (SIZE),
         .DATA_WIDTH_IN(DATA_WIDTH_IN),
+        .DATA_WIDTH_OUT(DATA_WIDTH_OUT),
         .ACCUM_WIDTH  (ACCUM_WIDTH)
     ) u_quant (
         .clk,

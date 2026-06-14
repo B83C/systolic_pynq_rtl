@@ -5,9 +5,10 @@
 // Output: SIZE * 8-bit packed int8.
 
 module quantizer #(
-    parameter unsigned SIZE          = 4,
-    parameter unsigned DATA_WIDTH_IN = 32,
-    parameter unsigned ACCUM_WIDTH   = 32
+    parameter unsigned SIZE           = 4,
+    parameter unsigned DATA_WIDTH_IN  = 32,
+    parameter unsigned DATA_WIDTH_OUT = 8,
+    parameter unsigned ACCUM_WIDTH    = 32
 ) (
     input  logic clk,
     input  logic rst_n,
@@ -16,17 +17,17 @@ module quantizer #(
     input  logic [ 4:0] shift,
     input  logic [ 7:0] zp_out,
 
-    // AXI-Stream slave (raw accumulators, SIZE × 32-bit)
+    // AXI-Stream slave (raw accumulators, SIZE × DATA_WIDTH_IN)
     input  logic [SIZE*DATA_WIDTH_IN-1:0] s_axis_tdata,
     input  logic                          s_axis_tvalid,
     output logic                          s_axis_tready,
     input  logic                          s_axis_tlast,
 
-    // AXI-Stream master (quantized int8, SIZE × 8-bit)
-    output logic [SIZE*8-1:0] m_axis_tdata,
-    output logic              m_axis_tvalid,
-    input  logic              m_axis_tready,
-    output logic              m_axis_tlast
+    // AXI-Stream master (quantized, SIZE × DATA_WIDTH_OUT)
+    output logic [SIZE*DATA_WIDTH_OUT-1:0] m_axis_tdata,
+    output logic                           m_axis_tvalid,
+    input  logic                           m_axis_tready,
+    output logic                           m_axis_tlast
 );
 
     wire signed [ACCUM_WIDTH-1:0] acc[SIZE];
@@ -79,7 +80,8 @@ module quantizer #(
 
     generate
         for (genvar qi = 0; qi < SIZE; qi++) begin : gen_out
-            assign m_axis_tdata[qi*8+:8] = q_out[qi];
+            assign m_axis_tdata[qi*DATA_WIDTH_OUT+:DATA_WIDTH_OUT]
+                 = {{(DATA_WIDTH_OUT - 8){q_out[qi][7]}}, q_out[qi]};
         end
     endgenerate
 
