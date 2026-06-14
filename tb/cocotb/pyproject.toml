@@ -6,9 +6,5 @@ dependencies = [
     "cocotb",
     "cocotbext-axi",
     "numpy",
+    "pytest",
 ]
-
-[tool.cocotb]
-simulator = "verilator"
-toplevel = "sa_wrapper_axi_ctrl_sv"
-module = "tb.cocotb.test_sa"

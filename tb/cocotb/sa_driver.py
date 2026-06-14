@@ -85,9 +85,16 @@ class SADriver:
 
     @staticmethod
     def unpack_rows(buf, n_rows, size, words_per_beat, dtype=np.int32):
-        out = np.zeros((n_rows, size), dtype=dtype)
-        for i in range(size):
-            out[:, i] = buf[i::words_per_beat]
+        n_cols = min(size, words_per_beat * 4)
+        out = np.zeros((n_rows, n_cols), dtype=dtype)
+        for beat in range(words_per_beat):
+            col = buf[beat::words_per_beat]
+            base = beat * 4
+            for j in range(4):
+                if base + j < size:
+                    out[:, base + j] = (col >> (8 * j)) & 0xFF
+        # sign extend from int8
+        out = np.where(out > 127, out - 256, out).astype(dtype)
         return out
 
     # -- quant helpers -----------------------------------------------------
