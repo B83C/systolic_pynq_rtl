@@ -30,19 +30,19 @@ module quantizer_wrapper #(
         .DATA_WIDTH_OUT(DATA_WIDTH_OUT),
         .ACCUM_WIDTH  (ACCUM_WIDTH)
     ) u_quant (
-        .clk,
-        .rst_n,
-        .mul_q,
-        .shift,
-        .zp_out,
-        .s_axis_tdata,
-        .s_axis_tvalid,
-        .s_axis_tready,
-        .s_axis_tlast,
-        .m_axis_tdata,
-        .m_axis_tvalid,
-        .m_axis_tready,
-        .m_axis_tlast
+        .clk            (clk),
+        .rst_n          (rst_n),
+        .mul_q          (mul_q),
+        .shift          (shift),
+        .zp_out         (zp_out),
+        .s_axis_tdata   (s_axis_tdata),
+        .s_axis_tvalid  (s_axis_tvalid),
+        .s_axis_tready  (s_axis_tready),
+        .s_axis_tlast   (s_axis_tlast),
+        .m_axis_tdata   (m_axis_tdata),
+        .m_axis_tvalid  (m_axis_tvalid),
+        .m_axis_tready  (m_axis_tready),
+        .m_axis_tlast   (m_axis_tlast)
     );
 
 endmodule
