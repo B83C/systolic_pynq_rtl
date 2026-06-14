@@ -2,12 +2,12 @@
 `include "defs.svh"
 
 module sa_wrapper_axi_ctrl_sv #(
-    parameter  unsigned SIZE           = 4,
     parameter  unsigned A_DEPTH        = 4,
     parameter  unsigned C_DEPTH        = 4,
+    parameter  unsigned ACCUM_WIDTH    = 32,
+    parameter  unsigned SIZE           = 4,
     parameter  unsigned DATA_WIDTH_IN  = 8,
     parameter  unsigned DATA_WIDTH_OUT = 8,
-    parameter  unsigned ACCUM_WIDTH    = 32,
     localparam unsigned AXI_IN_WIDTH   = SIZE * DATA_WIDTH_IN,
     localparam unsigned AXI_OUT_WIDTH  = SIZE * DATA_WIDTH_OUT,
     localparam unsigned AXI_ADDR_W     = 6
