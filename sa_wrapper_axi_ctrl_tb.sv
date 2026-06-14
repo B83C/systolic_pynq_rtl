@@ -27,6 +27,14 @@ module sa_wrapper_axi_ctrl_tb;
   logic s_axil_rvalid, s_axil_rready;
   logic a_bypass;
   wire  idle;
+  logic [15:0] o_mul_q;
+  logic [ 4:0] o_shift;
+  logic [ 7:0] o_zp_out;
+  logic [ 7:0] o_zp_in;
+
+  // quantizer signals
+  logic [SIZE*8-1:0] q_m_axis_tdata;
+  logic q_m_axis_tvalid, q_m_axis_tready, q_m_axis_tlast;
 
   sa_wrapper_axi_ctrl_sv #(
       .SIZE(SIZE),
@@ -36,6 +44,21 @@ module sa_wrapper_axi_ctrl_tb;
       .DATA_WIDTH_OUT(DWO)
   ) dut (
       .*
+  );
+
+  quantizer #(.SIZE(SIZE), .DATA_WIDTH_IN(DWO)) u_quant (
+      .clk, .rst_n,
+      .mul_q   (o_mul_q),
+      .shift   (o_shift),
+      .zp_out  (o_zp_out),
+      .s_axis_tdata (m_axis_tdata),
+      .s_axis_tvalid(m_axis_tvalid),
+      .s_axis_tready(),
+      .s_axis_tlast (m_axis_tlast),
+      .m_axis_tdata (q_m_axis_tdata),
+      .m_axis_tvalid(q_m_axis_tvalid),
+      .m_axis_tready(1'b1),
+      .m_axis_tlast (q_m_axis_tlast)
   );
   always #1 clk = ~clk;
 
@@ -66,13 +89,26 @@ module sa_wrapper_axi_ctrl_tb;
   `include "tb/tb_test_16.svh"
   `include "tb/tb_test_17.svh"
   `include "tb/tb_test_18.svh"
+  `include "tb/tb_test_19.svh"
+  `include "tb/tb_test_20.svh"
 
-  // output monitor — always-on capture
+  // output monitor — always-on capture (raw SA output)
   always @(posedge clk)
     if (m_axis_tvalid && m_axis_tready) begin
       for (int i = 0; i < SIZE; i++) result[out_count][i] = m_axis_tdata[i*32+:32];
       result_tlast[out_count] = m_axis_tlast;
       out_count++;
+    end
+
+  // quantizer output monitor
+  int q_out_count;
+  int q_result[4096][4];
+  bit  q_result_tlast[4096];
+  always @(posedge clk)
+    if (q_m_axis_tvalid) begin
+      for (int i = 0; i < SIZE; i++) q_result[q_out_count][i] = $signed(q_m_axis_tdata[i*8+:8]);
+      q_result_tlast[q_out_count] = q_m_axis_tlast;
+      q_out_count++;
     end
 
   // -----------------------------------------------------------------------
@@ -152,6 +188,12 @@ module sa_wrapper_axi_ctrl_tb;
     test_16_softrst_in_loadc();
     test_17_deadlock_stress();
     test_18_single_element_ring();
+    test_19_quantizer_identity();
+    test_20_quantizer_scale();
+    test_21_quantizer_shift();
+    test_22_quantizer_zp();
+    // test_23_quantizer_negative();  // WIP: stream_mat hangs
+    // test_24_quantizer_mixed();
 
     // ═════════════════════════════════════════════════════════════════════
     // Summary
