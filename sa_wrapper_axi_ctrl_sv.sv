@@ -7,7 +7,7 @@ module sa_wrapper_axi_ctrl_sv #(
     parameter  unsigned ACCUM_WIDTH    = 32,
     parameter  unsigned SIZE           = 4,
     parameter  unsigned DATA_WIDTH_IN  = 8,
-    parameter  unsigned DATA_WIDTH_OUT = 8,
+    parameter  unsigned DATA_WIDTH_OUT = 32,
     localparam unsigned AXI_IN_WIDTH   = SIZE * DATA_WIDTH_IN,
     localparam unsigned AXI_OUT_WIDTH  = SIZE * DATA_WIDTH_OUT,
     localparam unsigned AXI_ADDR_W     = 6
@@ -76,7 +76,9 @@ module sa_wrapper_axi_ctrl_sv #(
   logic [DATA_WIDTH_IN-1:0] a_row[SIZE];
   logic [DATA_WIDTH_IN-1:0] b_row[SIZE][SIZE];
   logic [ACCUM_WIDTH-1:0] c_row[SIZE];
+  /* verilator lint_off UNOPTFLAT */
   logic [ACCUM_WIDTH-1:0] result_row[SIZE];
+  /* verilator lint_on UNOPTFLAT */
 
   logic [(DATA_WIDTH_IN * SIZE)-1:0] a_ring[A_RING_DEPTH];
   logic [A_RING_ADDR_W-1:0] a_rd_ptr;
@@ -301,7 +303,8 @@ module sa_wrapper_axi_ctrl_sv #(
         for (int i = 0; i < SIZE; i++) begin
           if (current_row[i]) begin
             for (int j = 0; j < SIZE; j++)
-            b_row[i][j] <= s_axis_B_tdata[j*DATA_WIDTH_IN+:DATA_WIDTH_IN];
+            b_row[i][j] <= $signed({1'b0, s_axis_B_tdata[j*DATA_WIDTH_IN+:DATA_WIDTH_IN]})
+                            - $signed(zp_in);
           end
         end
       end
@@ -433,7 +436,7 @@ module sa_wrapper_axi_ctrl_sv #(
   generate
     for (genvar i = 0; i < SIZE; i++) begin : gen_c_row_final
       assign c_row_final[i] = (state == LOAD_A || state == LOAD_C) ? 0 :
-                               feedback_valid ? result_row[i] : c_row[i] ;
+                                feedback_valid ? result_row[i] : c_row[i] ;
     end
   endgenerate
 
@@ -482,61 +485,34 @@ module sa_wrapper_axi_ctrl_sv #(
     end
   end
 
-  // ---- Quantization + pipelined output ----
-  // Registers written via AXI-Lite
-  // mul_q[15:0], shift[4:0], zp_out[7:0], zp_in[7:0]
-  // Quant: q_out = clamp(((result * mul_q) >>> shift) + zp_out, -128, 127)
-  //
-  // Output pipeline register with back-pressure:
-  //   pipe_valid / pipe_data / pipe_last – registered versions
-  //   Stalls when !m_axis_tready
-
+  // ---- Quantization ----
   wire signed [ACCUM_WIDTH+15:0] q_prod[SIZE];
   wire signed [ACCUM_WIDTH+15:0] q_shifted[SIZE];
-  wire signed [15:0] q_with_zp[SIZE];
-  wire signed [7:0] q_out[SIZE];
+  wire signed [          15:0] q_with_zp[SIZE];
+  wire signed [           7:0] q_out[SIZE];
+  wire [AXI_OUT_WIDTH-1:0] quant_data;
   generate
     for (genvar qi = 0; qi < SIZE; qi++) begin : gen_quant
       (* use_dsp = "yes" *)
-      assign q_prod[qi] = $signed(result_row[qi]) * $signed({16'h0, mul_q});
+      assign q_prod[qi]   = $signed(result_row[qi]) * $signed({16'h0, mul_q});
       assign q_shifted[qi] = $signed(q_prod[qi]) >>> shift;
       assign q_with_zp[qi] = $signed(q_shifted[qi][15:0]) + $signed(zp_out);
-      assign q_out[qi]     = (q_with_zp[qi] > 127) ? 8'sd127 :
-                              (q_with_zp[qi] < -128) ? -8'sd128 :
-                              q_with_zp[qi][7:0];
+      assign q_out[qi]     = (q_with_zp[qi] > 127)   ? 8'sd127 :
+                             (q_with_zp[qi] < -128) ? -8'sd128 :
+                                                        q_with_zp[qi][7:0];
+      assign quant_data[qi*DATA_WIDTH_OUT+:DATA_WIDTH_OUT]
+        = {{(DATA_WIDTH_OUT - 8){q_out[qi][7]}}, q_out[qi]};
     end
   endgenerate
 
-  // Pipeline registers (combinational full update, stalled by back-pressure)
-  reg pipe_valid;
-  reg [AXI_OUT_WIDTH-1:0] pipe_data;
-  reg pipe_last;
-  wire pipe_advance = !pipe_valid || m_axis_tready;
+  wire [AXI_OUT_WIDTH-1:0] raw_data;
+  generate
+    for (genvar gi = 0; gi < SIZE; gi++)
+      assign raw_data[gi*DATA_WIDTH_OUT+:DATA_WIDTH_OUT] = result_row[gi];
+  endgenerate
 
-  always @(posedge clk, negedge rst_n) begin
-    if (!rst_n) begin
-      pipe_valid <= 0;
-      pipe_last  <= 0;
-      pipe_data  <= 0;
-    end else if (soft_rst) begin
-      pipe_valid <= 0;
-      pipe_last  <= 0;
-      pipe_data  <= 0;
-    end else if (pipe_advance) begin
-      pipe_valid <= output_valid;
-      pipe_last  <= output_last && output_valid;
-      for (int qi = 0; qi < SIZE; qi++)
-      if (mul_q == 0) pipe_data[qi*DATA_WIDTH_OUT+:DATA_WIDTH_OUT] <= result_row[qi];
-      else
-        pipe_data[qi*DATA_WIDTH_OUT+:DATA_WIDTH_OUT] <= {
-          {(DATA_WIDTH_OUT - 8) {q_out[qi][7]}}, q_out[qi]
-        };
-    end
-    // else stall: keep current values
-  end
-
-  assign m_axis_tvalid = pipe_valid;
-  assign m_axis_tdata  = pipe_data;
-  assign m_axis_tlast  = pipe_last;
+  assign m_axis_tvalid = output_valid;
+  assign m_axis_tlast  = output_last && output_valid;
+  assign m_axis_tdata  = (mul_q == 0) ? raw_data : quant_data;
 
 endmodule
