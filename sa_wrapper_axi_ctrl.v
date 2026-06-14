@@ -42,6 +42,7 @@ module sa_wrapper_axi_ctrl #(
     input  wire        s_axil_rready,
 
     output wire a_bypass,
+    output wire axis_bypass,
     output wire idle,
 
     output wire [15:0] o_mul_q,
@@ -85,6 +86,7 @@ module sa_wrapper_axi_ctrl #(
       .s_axil_rvalid  (s_axil_rvalid),
       .s_axil_rready  (s_axil_rready),
       .a_bypass       (a_bypass),
+      .axis_bypass    (axis_bypass),
       .idle           (idle),
       .o_mul_q        (o_mul_q),
       .o_shift        (o_shift),

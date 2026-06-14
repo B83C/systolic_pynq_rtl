@@ -15,6 +15,7 @@ localparam REG_C_LOAD       = 6'h08;
 localparam REG_FB_CNT       = 6'h0C;
 localparam REG_A_LOAD       = 6'h10;
 localparam REG_ACC_CNT      = 6'h14;
+localparam REG_AXIS_BYPASS  = 6'h3E;
 localparam REG_A_LOOP_START = 6'h18;
 localparam REG_A_LOOP_END   = 6'h1C;
 localparam REG_C_LOOP_START = 6'h20;

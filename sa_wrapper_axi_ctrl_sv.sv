@@ -44,6 +44,7 @@ module sa_wrapper_axi_ctrl_sv #(
     input  wire                  s_axil_rready,
 
     output wire a_bypass,
+    output wire axis_bypass,
     output wire idle,
     output reg [15:0] o_mul_q,
     output reg [4:0] o_shift,
@@ -119,6 +120,7 @@ module sa_wrapper_axi_ctrl_sv #(
   reg [4:0] shift;
   reg signed [7:0] zp_out;
   reg soft_rst;
+  reg axis_bypass_r;
   reg a_loop_active;
   reg c_loop_active;
   reg [A_RING_ADDR_W-1:0] a_loop_start;
@@ -215,6 +217,7 @@ module sa_wrapper_axi_ctrl_sv #(
       soft_rst      <= 0;
       a_load_pending <= 0;
       c_load_pending <= 0;
+      axis_bypass_r <= 0;
       zp_in         <= 0;
       mul_q         <= 0;
       shift         <= 0;
@@ -237,8 +240,9 @@ module sa_wrapper_axi_ctrl_sv #(
           REG_A_LOOP_END: a_loop_end <= s_axil_wdata[A_RING_ADDR_W-1:0];
           REG_C_LOOP_START: c_loop_start <= s_axil_wdata[C_RING_ADDR_W-1:0];
           REG_C_LOOP_END: c_loop_end <= s_axil_wdata[C_RING_ADDR_W-1:0];
-          REG_RST_INDEX: ;  // handled below
-          default: ;
+           REG_RST_INDEX: ;  // handled below
+           REG_AXIS_BYPASS: axis_bypass_r <= s_axil_wdata[0];
+           default: ;
         endcase
         s_axil_bvalid <= 1;
       end else if (s_axil_bready) begin
@@ -264,6 +268,11 @@ module sa_wrapper_axi_ctrl_sv #(
           REG_C_LOOP_START: s_axil_rdata <= {{32 - C_RING_ADDR_W{1'h0}}, c_loop_start};
           REG_C_LOOP_END:   s_axil_rdata <= {{32 - C_RING_ADDR_W{1'h0}}, c_loop_end};
           REG_SIZE:         s_axil_rdata <= SIZE;
+          REG_MUL_Q:        s_axil_rdata <= {16'h0, mul_q};
+          REG_SHIFT:        s_axil_rdata <= {27'h0, shift};
+          REG_ZP_OUT:       s_axil_rdata <= {24'h0, zp_out};
+          REG_ZP_IN:        s_axil_rdata <= {24'h0, zp_in};
+          REG_AXIS_BYPASS:  s_axil_rdata <= {31'h0, axis_bypass_r};
           default:          s_axil_rdata <= 32'h0;
         endcase
         s_axil_rvalid <= 1;
@@ -498,6 +507,7 @@ module sa_wrapper_axi_ctrl_sv #(
   assign o_shift  = shift;
   assign o_zp_out = zp_out;
   assign o_zp_in  = zp_in;
+  assign axis_bypass = axis_bypass_r;
 
   wire [AXI_OUT_WIDTH-1:0] m_axis_tdata_raw;
   generate

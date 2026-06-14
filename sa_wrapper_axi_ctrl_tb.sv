@@ -26,6 +26,7 @@ module sa_wrapper_axi_ctrl_tb;
   logic [ 1:0] s_axil_rresp;
   logic s_axil_rvalid, s_axil_rready;
   logic a_bypass;
+  wire  axis_bypass;
   wire  idle;
   logic [15:0] o_mul_q;
   logic [ 4:0] o_shift;
