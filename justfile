@@ -48,8 +48,29 @@ test-dw:
 wave-dw:
   surfer ./dw3x3_axis_tb_obj/waveform.fst --state-file dw3x3_axis_tb_state
 
-# # Cocotb testbench
-# cocotb-build:
+test-1dconv:
+  verilator --cc 1dconv_tb.sv --trace-fst --build -CFLAGS -O0 -CFLAGS -fuse-ld=mold -CFLAGS -std=c++20 --verilate-jobs 8 --timing --binary --Mdir 1dconv_tb_obj/ -Wno-UNOPTFLAT -Wno-WIDTHTRUNC -Wno-INITIALDLY -Wno-WIDTHEXPAND
+  cd ./1dconv_tb_obj/ && ./V__031dconv_tb
+
+test-q:
+  verilator --cc tb_1dconv_quant.sv --trace-fst --build -CFLAGS -O0 -CFLAGS -fuse-ld=mold --verilate-jobs 8 --timing --binary --Mdir tb_1dconv_quant_obj/ -Wno-WIDTHTRUNC -Wno-WIDTHEXPAND
+  cd ./tb_1dconv_quant_obj/ && ./Vtb_1dconv_quant
+
+test-8ch:
+  verilator --cc tb_conv1d_8ch.sv --trace-fst --build -CFLAGS -O0 -CFLAGS -fuse-ld=mold --verilate-jobs 8 --timing --binary --Mdir tb_conv1d_8ch_obj/ -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC
+  cd ./tb_conv1d_8ch_obj/ && ./Vtb_conv1d_8ch
+
+test-8x8ch:
+  verilator --cc tb_conv1d_8x8ch.sv --trace-fst --build -CFLAGS -O0 -CFLAGS -fuse-ld=mold --verilate-jobs 8 --timing --binary --Mdir tb_conv1d_8x8ch_obj/ -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC
+  cd ./tb_conv1d_8x8ch_obj/ && ./Vtb_conv1d_8x8ch
+
+# Cocotb testbench — same tests can run on sim (cocotb) or PYNQ (sa_pynq.py)
+cocotb-setup:
+  cd tb/cocotb && uv sync
+
+cocotb-test filter="":
+  echo "See tb/cocotb/run.py for Cocotb build instructions"
+  echo "Tests in tb/cocotb/test_sa.py run with numpy reference models"
 #   cd tb/cocotb && uv run python3 run.py build
 
 # cocotb-test filter="":

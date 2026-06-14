@@ -1,0 +1,13 @@
+[project]
+name = "sa-cocotb"
+version = "0.1"
+requires-python = ">=3.10"
+dependencies = [
+    "cocotb",
+    "numpy",
+]
+
+[tool.cocotb]
+simulator = "verilator"
+toplevel = "sa_wrapper_axi_ctrl_sv"
+module = "tb.cocotb.test_sa"
