@@ -44,7 +44,11 @@ module sa_wrapper_axi_ctrl_sv #(
     input  wire                  s_axil_rready,
 
     output wire a_bypass,
-    output wire idle
+    output wire idle,
+    output reg [15:0] o_mul_q,
+    output reg [4:0] o_shift,
+    output reg [7:0] o_zp_out,
+    output reg [7:0] o_zp_in
 );
 
   logic new_batch;
@@ -209,6 +213,8 @@ module sa_wrapper_axi_ctrl_sv #(
       acc_cnt       <= 0;
       b_underflow   <= 0;
       soft_rst      <= 0;
+      a_load_pending <= 0;
+      c_load_pending <= 0;
       zp_in         <= 0;
       mul_q         <= 0;
       shift         <= 0;
@@ -303,8 +309,11 @@ module sa_wrapper_axi_ctrl_sv #(
         for (int i = 0; i < SIZE; i++) begin
           if (current_row[i]) begin
             for (int j = 0; j < SIZE; j++)
-            b_row[i][j] <= $signed({1'b0, s_axis_B_tdata[j*DATA_WIDTH_IN+:DATA_WIDTH_IN]})
-                            - $signed(zp_in);
+            b_row[i][j] <= $signed(
+                {1'b0, s_axis_B_tdata[j*DATA_WIDTH_IN+:DATA_WIDTH_IN]}
+            ) - $signed(
+                zp_in
+            );
           end
         end
       end
@@ -485,34 +494,19 @@ module sa_wrapper_axi_ctrl_sv #(
     end
   end
 
-  // ---- Quantization ----
-  wire signed [ACCUM_WIDTH+15:0] q_prod[SIZE];
-  wire signed [ACCUM_WIDTH+15:0] q_shifted[SIZE];
-  wire signed [          15:0] q_with_zp[SIZE];
-  wire signed [           7:0] q_out[SIZE];
-  wire [AXI_OUT_WIDTH-1:0] quant_data;
-  generate
-    for (genvar qi = 0; qi < SIZE; qi++) begin : gen_quant
-      (* use_dsp = "yes" *)
-      assign q_prod[qi]   = $signed(result_row[qi]) * $signed({16'h0, mul_q});
-      assign q_shifted[qi] = $signed(q_prod[qi]) >>> shift;
-      assign q_with_zp[qi] = $signed(q_shifted[qi][15:0]) + $signed(zp_out);
-      assign q_out[qi]     = (q_with_zp[qi] > 127)   ? 8'sd127 :
-                             (q_with_zp[qi] < -128) ? -8'sd128 :
-                                                        q_with_zp[qi][7:0];
-      assign quant_data[qi*DATA_WIDTH_OUT+:DATA_WIDTH_OUT]
-        = {{(DATA_WIDTH_OUT - 8){q_out[qi][7]}}, q_out[qi]};
-    end
-  endgenerate
+  assign o_mul_q  = mul_q;
+  assign o_shift  = shift;
+  assign o_zp_out = zp_out;
+  assign o_zp_in  = zp_in;
 
-  wire [AXI_OUT_WIDTH-1:0] raw_data;
+  wire [AXI_OUT_WIDTH-1:0] m_axis_tdata_raw;
   generate
     for (genvar gi = 0; gi < SIZE; gi++)
-      assign raw_data[gi*DATA_WIDTH_OUT+:DATA_WIDTH_OUT] = result_row[gi];
+      assign m_axis_tdata_raw[gi*DATA_WIDTH_OUT+:DATA_WIDTH_OUT] = result_row[gi];
   endgenerate
 
   assign m_axis_tvalid = output_valid;
   assign m_axis_tlast  = output_last && output_valid;
-  assign m_axis_tdata  = (mul_q == 0) ? raw_data : quant_data;
+  assign m_axis_tdata  = m_axis_tdata_raw;
 
 endmodule
