@@ -20,7 +20,7 @@ module chlast_to_tiled #(
     output wire                          m_axis_tlast,
 
     input wire                            bypass_i,
-    input wire [   $bits(CHANNELS) - 1:0] cfg_channels_i,
+    input wire [  $clog2(CHANNELS) - 1:0] cfg_channels_i,
     input wire [$clog2(MAX_REPLAY_CNT):0] repeat_cnt_i
 );
 
