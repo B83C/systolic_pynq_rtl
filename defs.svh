@@ -27,5 +27,6 @@ localparam REG_ZP_OUT       = 6'h38;
 localparam REG_ZP_IN        = 6'h3C;
 localparam REG_OUT_CH       = 6'h3D;
 localparam REG_AXIS_BYPASS  = 6'h3E;
+localparam REG_REPEAT_CNT   = 6'h3F;
 
 `endif
