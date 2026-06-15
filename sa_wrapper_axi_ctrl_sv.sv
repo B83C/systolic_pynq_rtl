@@ -49,7 +49,8 @@ module sa_wrapper_axi_ctrl_sv #(
     output reg [15:0] o_mul_q,
     output reg [4:0] o_shift,
     output reg [7:0] o_zp_out,
-    output reg [7:0] o_zp_in
+    output reg [7:0] o_zp_in,
+    output reg [6:0] o_out_channels
 );
 
   logic new_batch;
@@ -119,6 +120,7 @@ module sa_wrapper_axi_ctrl_sv #(
   reg [15:0] mul_q;
   reg [4:0] shift;
   reg signed [7:0] zp_out;
+  reg [6:0] out_channels;
   reg soft_rst;
   reg axis_bypass_r;
   reg a_loop_active;
@@ -222,6 +224,7 @@ module sa_wrapper_axi_ctrl_sv #(
       mul_q         <= 0;
       shift         <= 0;
       zp_out        <= 0;
+      out_channels  <= SIZE;
       s_axil_bvalid <= 0;
       s_axil_rvalid <= 0;
       s_axil_rdata  <= 0;
@@ -242,6 +245,7 @@ module sa_wrapper_axi_ctrl_sv #(
           REG_C_LOOP_END: c_loop_end <= s_axil_wdata[C_RING_ADDR_W-1:0];
            REG_RST_INDEX: ;  // handled below
            REG_AXIS_BYPASS: axis_bypass_r <= s_axil_wdata[0];
+           REG_OUT_CH:      out_channels <= s_axil_wdata[6:0];
            default: ;
         endcase
         s_axil_bvalid <= 1;
@@ -273,6 +277,7 @@ module sa_wrapper_axi_ctrl_sv #(
           REG_ZP_OUT:       s_axil_rdata <= {24'h0, zp_out};
           REG_ZP_IN:        s_axil_rdata <= {24'h0, zp_in};
           REG_AXIS_BYPASS:  s_axil_rdata <= {31'h0, axis_bypass_r};
+          REG_OUT_CH:       s_axil_rdata <= {25'h0, out_channels};
           default:          s_axil_rdata <= 32'h0;
         endcase
         s_axil_rvalid <= 1;
@@ -507,6 +512,7 @@ module sa_wrapper_axi_ctrl_sv #(
   assign o_shift  = shift;
   assign o_zp_out = zp_out;
   assign o_zp_in  = zp_in;
+  assign o_out_channels = out_channels;
   assign axis_bypass = axis_bypass_r;
 
   wire [AXI_OUT_WIDTH-1:0] m_axis_tdata_raw;
