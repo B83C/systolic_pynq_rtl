@@ -4,7 +4,7 @@
 // Input:  channel-interleaved (8 channels per beat for one spatial pixel)
 // Output: spatial-interleaved (one channel across 8 spatial positions per beat)
 
-module chlast_to_tiled #(
+module chlast_to_tiled_sv #(
     parameter DATA_WIDTH  = 8,
     parameter CH_PER_BEAT = 8,
     parameter CHANNELS    = 64,
@@ -122,7 +122,7 @@ out_buf_cntr
   endgenerate
 
   assign m_axis_tdata  = bypass_i ? s_axis_tdata : output_row;
-  assign m_axis_tvalid = bypass_i ? s_axis_tvalid : out_state_nxt == OUT_REPLAYING;
+  assign m_axis_tvalid = bypass_i ? s_axis_tvalid : out_state == OUT_REPLAYING;
   assign m_axis_tlast  = bypass_i ? s_axis_tlast : out_last && output_has_tlast;
 
 
