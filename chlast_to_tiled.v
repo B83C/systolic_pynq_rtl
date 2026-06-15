@@ -7,21 +7,21 @@ module chlast_to_tiled #(
     parameter OUT_COL    = 8,
     parameter MAX_REPLAY_CNT    = 16
 ) (
-    input  logic                              clk,
+    input  wire                              clk,
     rst_n,
-    input  logic [CH_PER_BEAT*DATA_WIDTH-1:0] s_axis_tdata,
-    input  logic                              s_axis_tvalid,
-    output logic                              s_axis_tready,
-    input  logic                              s_axis_tlast,
+    input  wire [CH_PER_BEAT*DATA_WIDTH-1:0] s_axis_tdata,
+    input  wire                              s_axis_tvalid,
+    output wire                              s_axis_tready,
+    input  wire                              s_axis_tlast,
 
-    output logic [OUT_COL*DATA_WIDTH-1:0] m_axis_tdata,
-    output logic                          m_axis_tvalid,
-    input  logic                          m_axis_tready,
-    output logic                          m_axis_tlast,
+    output wire [OUT_COL*DATA_WIDTH-1:0] m_axis_tdata,
+    output wire                          m_axis_tvalid,
+    input  wire                          m_axis_tready,
+    output wire                          m_axis_tlast,
 
-    input logic                            bypass_i,
-    input logic [   $bits(CHANNELS) - 1:0] cfg_channels_i,
-    input logic [$clog2(MAX_REPLAY_CNT):0] repeat_cnt_i
+    input wire                            bypass_i,
+    input wire [   $bits(CHANNELS) - 1:0] cfg_channels_i,
+    input wire [$clog2(MAX_REPLAY_CNT):0] repeat_cnt_i
 );
 
   chlast_to_tiled_sv #(
