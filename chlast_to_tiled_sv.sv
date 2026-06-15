@@ -82,8 +82,6 @@ module chlast_to_tiled #(
       out_state <= OUT_IDLE;
     end else begin
       out_state <= out_state_nxt;
-      if (out_state_nxt == OUT_REPLAYING && out_state == OUT_IDLE)
-        $display("REPLAY_START t=%0d", $time);
     end
   end
 
@@ -124,7 +122,7 @@ out_buf_cntr
   endgenerate
 
   assign m_axis_tdata  = bypass_i ? s_axis_tdata : output_row;
-  assign m_axis_tvalid = bypass_i ? s_axis_tvalid : out_state == OUT_REPLAYING;
+  assign m_axis_tvalid = bypass_i ? s_axis_tvalid : out_state_nxt == OUT_REPLAYING;
   assign m_axis_tlast  = bypass_i ? s_axis_tlast : out_last && output_has_tlast;
 
 

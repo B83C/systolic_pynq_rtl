@@ -32,6 +32,7 @@ module sa_wrapper_axi_ctrl_tb;
   logic [ 4:0] o_shift;
   logic [ 7:0] o_zp_out;
   logic [ 7:0] o_zp_in;
+  logic [ 6:0] o_out_channels;
 
   // quantizer signals
   logic [SIZE*8-1:0] q_m_axis_tdata;
@@ -92,6 +93,7 @@ module sa_wrapper_axi_ctrl_tb;
   `include "tb/tb_test_18.svh"
   `include "tb/tb_test_19.svh"
   `include "tb/tb_test_20.svh"
+  `include "tb/tb_test_yunet.svh"
 
   // output monitor — always-on capture (raw SA output)
   always @(posedge clk)
@@ -103,8 +105,12 @@ module sa_wrapper_axi_ctrl_tb;
 
   // quantizer output monitor
   int q_out_count;
-  int q_result[4096][4];
-  bit  q_result_tlast[4096];
+    int q_result[4096][4];
+    bit  q_result_tlast[4096];
+
+    // YuNet test data
+    int yunet_W[4][4] = '{'{ -1,  -8, -15, -30}, '{-30,   2,   2, -16}, '{  6,  11,  71,  35}, '{  9, -67, -48,  -9}};
+    int yunet_A[4][4] = '{'{ 11,  21,  35, -37}, '{-26, -19,   6,  19}, '{ 31, -15,  31,  20}, '{  6,  25, -15, -20}};
   always @(posedge clk)
     if (q_m_axis_tvalid) begin
       for (int i = 0; i < SIZE; i++) q_result[q_out_count][i] = $signed(q_m_axis_tdata[i*8+:8]);
@@ -193,6 +199,7 @@ module sa_wrapper_axi_ctrl_tb;
     test_20_quantizer_scale();
     test_21_quantizer_shift();
     test_22_quantizer_zp();
+    // test_yunet_pw();  // WIP: state isolation
     // test_23_quantizer_negative();  // WIP: stream_mat hangs
     // test_24_quantizer_mixed();
 

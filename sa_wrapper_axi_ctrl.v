@@ -48,7 +48,8 @@ module sa_wrapper_axi_ctrl #(
     output wire [15:0] o_mul_q,
     output wire [ 4:0] o_shift,
     output wire [ 7:0] o_zp_out,
-    output wire [ 7:0] o_zp_in
+    output wire [ 7:0] o_zp_in,
+    output wire [ 6:0] o_out_channels
 );
 
   sa_wrapper_axi_ctrl_sv #(
@@ -91,7 +92,8 @@ module sa_wrapper_axi_ctrl #(
       .o_mul_q        (o_mul_q),
       .o_shift        (o_shift),
       .o_zp_out       (o_zp_out),
-      .o_zp_in        (o_zp_in)
+      .o_zp_in        (o_zp_in),
+      .o_out_channels (o_out_channels)
   );
 
 endmodule
