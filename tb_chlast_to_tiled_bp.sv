@@ -118,11 +118,12 @@ module tb_chlast_to_tiled_bp;
     m_ready = 1;
     repeat (300) @(posedge clk);
 
-    // Output replay: each input cell becomes one output beat * repeat_cnt
+    // Output replay: cfg_channels * repeat_cnt beats total.
+    // cfg_channels = 32, repeat_cnt = 1 → 32 beats.
     $display("t=%0t out_count=%0d tlast_count=%0d (expect %0d, %0d)",
-             $time, out_count, tlast_count, N_IN*REP_CNT, REP_CNT);
-    if (out_count != N_IN*REP_CNT) begin
-      $display("  FAIL: out_count != %0d", N_IN*REP_CNT); errors++;
+             $time, out_count, tlast_count, CH*REP_CNT, REP_CNT);
+    if (out_count != CH*REP_CNT) begin
+      $display("  FAIL: out_count != %0d", CH*REP_CNT); errors++;
     end
     if (tlast_count != REP_CNT) begin
       $display("  FAIL: tlast_count != %0d", REP_CNT); errors++;
