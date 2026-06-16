@@ -158,15 +158,10 @@ module chlast_to_tiled_gather_sv #(
     end
   end
 
-  // Output
-  wire [OUT_COL*DATA_WIDTH-1:0] orow;
-  generate
-    for (genvar i = 0; i < OUT_COL; i++) begin : go
-      wire [GIW-1:0] oa = i * DATA_WIDTH;
-      assign orow[i*DATA_WIDTH+:DATA_WIDTH] = gath[sel][ccnt][oa+:DATA_WIDTH];
-    end
-  endgenerate
-
+  // Output — clocked read for distributed RAM inference
+  logic [OUT_COL*DATA_WIDTH-1:0] orow;
+  always @(posedge clk) orow <= gath[sel][ccnt];
+  
   wire [OUT_COL*DATA_WIDTH-1:0] tdp = orow;
   wire tvp = st == REPLAYING;
   wire tlp = ol && oht;
