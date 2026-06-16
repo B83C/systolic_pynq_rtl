@@ -80,10 +80,9 @@ module tiled_to_chlast_gather_sv #(
 `endif
 
   // Row-gather LUT-RAM — ping-pong between 2 sets.
-  // Each entry is a packed CH_PER_BEAT×DATA_WIDTH word.
-  // The input writes 1 byte at position `inner` via a loop; LUT-RAM
-  // maps each position to a separate LUT (8-bit write, no byte-enable).
-  (* ram_style = "distributed" *) logic [CH_PER_BEAT*DATA_WIDTH-1:0] gather[2][OUT_COL];
+  // Byte-wide elements so `inner` is an address index, not a variable
+  // bit-select — Vivado can infer distributed RAM.
+  (* ram_style = "distributed" *) logic [DATA_WIDTH-1:0] gather[2][OUT_COL][CH_PER_BEAT];
 
   // cfg_channels is the live AXI reg; cfg_channels_q is the shadow used by
   // the FSM.  cfg_ch_block_mask_q is a one-hot bit at position
@@ -168,11 +167,11 @@ module tiled_to_chlast_gather_sv #(
     end
   end
 
-  // Gather write: 1 byte per col per input beat, byte-level position
+  // Gather write: 1 byte per col per input beat
   always @(posedge clk) begin
     if (accept_data) begin
       for (int c = 0; c < OUT_COL; c++) begin
-        gather[gather_set][c][DATA_WIDTH*inner +: DATA_WIDTH]
+        gather[gather_set][c][inner]
           <= tlast_seen ? {DATA_WIDTH{1'b0}} : s_axis_tdata[c*DATA_WIDTH+:DATA_WIDTH];
       end
     end
@@ -180,10 +179,13 @@ module tiled_to_chlast_gather_sv #(
 
   // Flush: write gather[flush_set] → buffer[flush_sel] over CH_PER_BEAT cycles.
   // Each cycle writes one packed word (full 64-bit write to BRAM, 1 WE).
+  // Unrolled loop packs CH_PER_BEAT byte-wide elements into the buffer word.
   always @(posedge clk) begin
     if (gstate == FLUSH) begin
-      buffer[(flush_sel * OUT_COL + flush_cnt) * CH_BLOCKS + gather_ch_blk] <=
-        gather[gather_set - 1][flush_cnt];
+      for (int b = 0; b < CH_PER_BEAT; b++) begin
+        buffer[(flush_sel * OUT_COL + flush_cnt) * CH_BLOCKS + gather_ch_blk][DATA_WIDTH*b +: DATA_WIDTH]
+          <= gather[gather_set - 1][flush_cnt][b];
+      end
     end
   end
 

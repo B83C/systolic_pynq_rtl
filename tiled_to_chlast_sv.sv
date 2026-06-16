@@ -204,39 +204,43 @@ module tiled_to_chlast_sv #(
 
   // input capture + tlast tracking
   always @(posedge clk, negedge rst_n) begin
-    if (pending && out_last) begin
-      pending           <= 0;
-      pending_has_tlast <= 0;
-      output_has_tlast  <= pending_has_tlast;
-      out_buf_sel       <= !out_buf_sel;
-    end
     if (!rst_n) begin
       pending           <= 0;
       tlast_seen        <= 0;
       pending_has_tlast <= 0;
       output_has_tlast  <= 0;
-    end else if (!bypass_r && (accept_data || tlast_seen)) begin
-      if (tlast_seen) begin
-        for (int c = 0; c < OUT_COL; c++) begin
-          buffer[(input_sel * OUT_COL + c) * CH_BLOCKS + ch_blk][BUF_IDX_W'(inner)] <= 0;
-        end
-      end else begin
-        for (int c = 0; c < OUT_COL; c++) begin
-          buffer[(input_sel * OUT_COL + c) * CH_BLOCKS + ch_blk][BUF_IDX_W'(inner * DATA_WIDTH) +: DATA_WIDTH]
-            <= s_axis_tdata[BUF_IDX_W'(c*DATA_WIDTH)+:DATA_WIDTH];
-        end
+      out_buf_sel       <= 0;
+    end else begin
+      if (pending && out_last) begin
+        pending           <= 0;
+        pending_has_tlast <= 0;
+        output_has_tlast  <= pending_has_tlast;
+        out_buf_sel       <= !out_buf_sel;
       end
 
-      if (s_axis_tlast && !tlast_seen && !input_last) tlast_seen <= 1;
-
-      if (input_last) begin
-        if (state == OUT_REPLAYING && !out_last) begin
-          pending           <= 1;
-          pending_has_tlast <= s_axis_tlast;
+      if (!bypass_r && (accept_data || tlast_seen)) begin
+        if (tlast_seen) begin
+          for (int c = 0; c < OUT_COL; c++) begin
+            buffer[(input_sel * OUT_COL + c) * CH_BLOCKS + ch_blk][BUF_IDX_W'(inner)] <= 0;
+          end
         end else begin
-          tlast_seen       <= 0;
-          output_has_tlast <= tlast_seen || s_axis_tlast;
-          out_buf_sel      <= !out_buf_sel;
+          for (int c = 0; c < OUT_COL; c++) begin
+            buffer[(input_sel * OUT_COL + c) * CH_BLOCKS + ch_blk][BUF_IDX_W'(inner * DATA_WIDTH) +: DATA_WIDTH]
+              <= s_axis_tdata[BUF_IDX_W'(c*DATA_WIDTH)+:DATA_WIDTH];
+          end
+        end
+
+        if (s_axis_tlast && !tlast_seen && !input_last) tlast_seen <= 1;
+
+        if (input_last) begin
+          if (state == OUT_REPLAYING && !out_last) begin
+            pending           <= 1;
+            pending_has_tlast <= s_axis_tlast;
+          end else begin
+            tlast_seen       <= 0;
+            output_has_tlast <= tlast_seen || s_axis_tlast;
+            out_buf_sel      <= !out_buf_sel;
+          end
         end
       end
     end

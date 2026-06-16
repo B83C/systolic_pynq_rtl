@@ -67,7 +67,7 @@ module chlast_to_tiled_sv #(
   localparam REG_CT_BYPASS  = 4'h8;
   logic bypass_r;
 
-  logic [CH_PER_BEAT*DATA_WIDTH-1:0] buffer[2][OUT_COL][CH_BLOCKS];
+  (* ram_style = "block" *) logic [CH_PER_BEAT*DATA_WIDTH-1:0] buffer[2][OUT_COL][CH_BLOCKS];
 
   logic [CFG_CH_W-1:0]     cfg_channels;
   logic [CFG_CH_W-1:0]     cfg_channels_q;
@@ -257,46 +257,52 @@ module chlast_to_tiled_sv #(
   // (uses ch_blocks_max from cfg_channels_q)
 
   always @(posedge clk, negedge rst_n) begin
-    if (pending && out_last) begin
-      pending <= 0;
-      pending_has_tlast <= 0;
-      output_has_tlast <= pending_has_tlast;
-      out_buf_sel <= !out_buf_sel;
-    end
     if (!rst_n) begin
-      col_cntr <= 0;
-      row_cntr <= 0;
-      pending <= 0;
-      tlast_seen <= 0;
+      col_cntr         <= 0;
+      row_cntr         <= 0;
+      pending          <= 0;
       pending_has_tlast <= 0;
-    end else if (!bypass_r && (accept_data || tlast_seen)) begin
-      if (tlast_seen) begin
-        buffer[input_sel][col_cntr][row_cntr] <= 0;
-      end else begin
-        buffer[input_sel][col_cntr][row_cntr] <= s_axis_tdata;
+      tlast_seen       <= 0;
+      output_has_tlast <= 0;
+      out_buf_sel      <= 0;
+    end else begin
+      // pending-frame swap when output completes a frame
+      if (pending && out_last) begin
+        pending          <= 0;
+        pending_has_tlast <= 0;
+        output_has_tlast <= pending_has_tlast;
+        out_buf_sel      <= !out_buf_sel;
       end
 
-      if (s_axis_tlast && !tlast_seen && !input_last) begin
-        tlast_seen <= 1;
-      end
+      if (!bypass_r && (accept_data || tlast_seen)) begin
+        if (tlast_seen) begin
+          buffer[input_sel][col_cntr][row_cntr] <= 0;
+        end else begin
+          buffer[input_sel][col_cntr][row_cntr] <= s_axis_tdata;
+        end
 
-      if (row_cntr == CHBLK_BITS'(ch_blocks_max - 1)) begin
-        row_cntr <= 0;
-        if (col_cntr == OUT_COL_BITS'(OUT_COL - 1)) begin
-          col_cntr <= 0;
-          if ((out_state == OUT_REPLAYING && !out_last)) begin
-            pending <= 1;
-            pending_has_tlast <= s_axis_tlast;
+        if (s_axis_tlast && !tlast_seen && !input_last) begin
+          tlast_seen <= 1;
+        end
+
+        if (row_cntr == CHBLK_BITS'(ch_blocks_max - 1)) begin
+          row_cntr <= 0;
+          if (col_cntr == OUT_COL_BITS'(OUT_COL - 1)) begin
+            col_cntr <= 0;
+            if ((out_state == OUT_REPLAYING && !out_last)) begin
+              pending          <= 1;
+              pending_has_tlast <= s_axis_tlast;
+            end else begin
+              tlast_seen       <= 0;
+              output_has_tlast <= s_axis_tlast;
+              out_buf_sel      <= !out_buf_sel;
+            end
           end else begin
-            tlast_seen <= 0;
-            output_has_tlast <= s_axis_tlast;
-            out_buf_sel <= !out_buf_sel;
+            col_cntr <= col_cntr + 1'b1;
           end
         end else begin
-          col_cntr <= col_cntr + 1'b1;
+          row_cntr <= row_cntr + 1'b1;
         end
-      end else begin
-        row_cntr <= row_cntr + 1'b1;
       end
     end
   end
