@@ -13,13 +13,7 @@ module sa_wrapper_axi_ctrl #(
     parameter integer  MAX_ZP_IN       = 127,
     parameter integer  MIN_ZP_IN       = -128,
     parameter unsigned MAX_OUT_CH      = 127,
-    parameter unsigned MAX_REPEAT_CNT  = 31,
-    localparam unsigned O_MUL_Q_W      = $clog2(MAX_MUL_Q      + 1),
-    localparam unsigned O_SHIFT_W      = $clog2(MAX_SHIFT      + 1),
-    localparam unsigned O_ZP_OUT_W     = $clog2(MAX_ZP_OUT - MIN_ZP_OUT + 1),
-    localparam unsigned O_ZP_IN_W      = $clog2(MAX_ZP_IN  - MIN_ZP_IN  + 1),
-    localparam unsigned O_OUT_CH_W     = $clog2(MAX_OUT_CH     + 1),
-    localparam unsigned O_REPEAT_CNT_W = $clog2(MAX_REPEAT_CNT + 1)
+    parameter unsigned MAX_REPEAT_CNT  = 31
 ) (
     input wire clk,
     input wire rst_n,
@@ -59,12 +53,12 @@ module sa_wrapper_axi_ctrl #(
     output wire axis_bypass,
     // output wire idle,
 
-    output wire [O_MUL_Q_W-1:0]      o_mul_q,
-    output wire [O_SHIFT_W-1:0]      o_shift,
-    output wire [O_ZP_OUT_W-1:0]     o_zp_out,
-    output wire [O_ZP_IN_W-1:0]      o_zp_in,
-    output wire [O_OUT_CH_W-1:0]     o_out_channels,
-    output wire [O_REPEAT_CNT_W-1:0] o_repeat_cnt
+    output wire [$clog2(MAX_MUL_Q+1)-1:0]            o_mul_q,
+    output wire [$clog2(MAX_SHIFT+1)-1:0]            o_shift,
+    output wire [$clog2(MAX_ZP_OUT-MIN_ZP_OUT+1)-1:0] o_zp_out,
+    output wire [$clog2(MAX_ZP_IN-MIN_ZP_IN+1)-1:0]   o_zp_in,
+    output wire [$clog2(MAX_OUT_CH+1)-1:0]           o_out_channels,
+    output wire [$clog2(MAX_REPLAY_CNT+1)-1:0]       o_repeat_cnt
 );
 
   sa_wrapper_axi_ctrl_sv #(
