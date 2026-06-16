@@ -16,6 +16,54 @@ test-ctrl:
     --Mdir sa_wrapper_axi_ctrl_tb_obj/ -Wno-WIDTHTRUNC -Wno-WIDTHEXPAND -Wno-UNOPTFLAT -Wno-IMPLICITSTATIC
   cd sa_wrapper_axi_ctrl_tb_obj/ && timeout 15 ./Vsa_wrapper_axi_ctrl_tb
 
+# Tiled-to-chlast testbench
+test-tiled:
+  verilator --cc tb_tiled_to_chlast_full.sv --trace-fst --build \
+    -CFLAGS -O0 -CFLAGS -fuse-ld=mold \
+    --verilate-jobs 16 --threads 4 --hierarchical --timing --binary \
+    --Mdir tb_tiled_to_chlast_full_obj/ -Wno-WIDTHTRUNC -Wno-WIDTHEXPAND -Wno-UNOPTFLAT -Wno-IMPLICITSTATIC
+  cd tb_tiled_to_chlast_full_obj/ && timeout 15 ./Vtb_tiled_to_chlast_full
+
+# Tiled-to-chlast backpressure (one-shot)
+test-tiled-bp:
+  verilator --cc tb_tiled_to_chlast_bp.sv --trace-fst --build \
+    -CFLAGS -O0 -CFLAGS -fuse-ld=mold \
+    --verilate-jobs 16 --threads 4 --hierarchical --timing --binary \
+    --Mdir tb_tiled_to_chlast_bp_obj/ -Wno-WIDTHTRUNC -Wno-WIDTHEXPAND -Wno-UNOPTFLAT -Wno-IMPLICITSTATIC
+  cd tb_tiled_to_chlast_bp_obj/ && timeout 15 ./Vtb_tiled_to_chlast_bp
+
+# Tiled-to-chlast sustained backpressure
+test-tiled-bp-sustained:
+  verilator --cc tb_tiled_to_chlast_bp_sustained.sv --trace-fst --build \
+    -CFLAGS -O0 -CFLAGS -fuse-ld=mold \
+    --verilate-jobs 16 --threads 4 --hierarchical --timing --binary \
+    --Mdir tb_tiled_to_chlast_bp_sustained_obj/ -Wno-WIDTHTRUNC -Wno-WIDTHEXPAND -Wno-UNOPTFLAT -Wno-IMPLICITSTATIC
+  cd tb_tiled_to_chlast_bp_sustained_obj/ && timeout 15 ./Vtb_tiled_to_chlast_bp_sustained
+
+# Chlast-to-tiled backpressure (one-shot)
+test-chlast-bp:
+  verilator --cc tb_chlast_to_tiled_bp.sv --trace-fst --build \
+    -CFLAGS -O0 -CFLAGS -fuse-ld=mold \
+    --verilate-jobs 16 --threads 4 --hierarchical --timing --binary \
+    --Mdir tb_chlast_to_tiled_bp_obj/ -Wno-WIDTHTRUNC -Wno-WIDTHEXPAND -Wno-UNOPTFLAT -Wno-IMPLICITSTATIC
+  cd tb_chlast_to_tiled_bp_obj/ && timeout 15 ./Vtb_chlast_to_tiled_bp
+
+# Chlast-to-tiled sustained backpressure
+test-chlast-bp-sustained:
+  verilator --cc tb_chlast_to_tiled_bp_sustained.sv --trace-fst --build \
+    -CFLAGS -O0 -CFLAGS -fuse-ld=mold \
+    --verilate-jobs 16 --threads 4 --hierarchical --timing --binary \
+    --Mdir tb_chlast_to_tiled_bp_sustained_obj/ -Wno-WIDTHTRUNC -Wno-WIDTHEXPAND -Wno-UNOPTFLAT -Wno-IMPLICITSTATIC
+  cd tb_chlast_to_tiled_bp_sustained_obj/ && timeout 15 ./Vtb_chlast_to_tiled_bp_sustained
+
+# Full pipeline: chlast -> SA -> quantizer -> tiled_to_chlast
+test-pipeline:
+  verilator --cc tb_pipeline.sv --trace-fst --build \
+    -CFLAGS -O0 -CFLAGS -fuse-ld=mold \
+    --verilate-jobs 16 --threads 4 --hierarchical --timing --binary \
+    --Mdir tb_pipeline_obj/ -Wno-WIDTHTRUNC -Wno-WIDTHEXPAND -Wno-UNOPTFLAT -Wno-IMPLICITSTATIC
+  cd tb_pipeline_obj/ && timeout 30 ./Vtb_pipeline
+
 # # C++ testbench: compile DUT + tb_main.cpp into shared obj dir
 # test-cpp: (bind-cpp)
 #   cd ./sa_wrapper_axi_ctrl_tb_obj/ && timeout 30 ./Vsa_wrapper_axi_ctrl_sv
