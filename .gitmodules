@@ -1,3 +1,3 @@
 [submodule "test_systolic"]
 	path = test_systolic
-	url = /home/b83c/vivado/test_systolic
+	url = https://github.com/B83C/systolic_pynq_rtl_vivado.git
