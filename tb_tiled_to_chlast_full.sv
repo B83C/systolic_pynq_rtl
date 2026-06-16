@@ -62,6 +62,20 @@ module tb_tiled_to_chlast_full;
     tc_bready = 0;
   endtask
 
+  // Readback via AXI-Lite
+  task tc_axil_read(input [3:0] addr, output [31:0] data);
+    @(posedge clk);
+    tc_arvalid = 1; tc_araddr = addr;
+    @(posedge clk);
+    while (!tc_rvalid) @(posedge clk);
+    data = tc_rdata;
+    tc_arvalid = 0; tc_rready = 1;
+    @(posedge clk);
+    tc_rready = 0;
+  endtask
+
+  logic [31:0] captured_data;
+
   // Drive bypass via AXI-Lite (reg TC_REG_BYPASS) instead of a port
   assign bypass = dut.bypass_r;
 
@@ -157,7 +171,12 @@ module tb_tiled_to_chlast_full;
 
     // TEST 3: bypass
     $display("=== TEST 3: bypass passthrough ===");
+    // Verify bypass readback (should be 0 before write)
+    tc_axil_read(TC_REG_BYPASS, captured_data);
+    $display("  bypass_r before write: %0d (expect 0)", captured_data);
     tc_axil_write(TC_REG_BYPASS, 1);
+    tc_axil_read(TC_REG_BYPASS, captured_data);
+    $display("  bypass_r after write 1: %0d (expect 1)", captured_data);
     m_ready = 1;
 
     @(negedge clk);
