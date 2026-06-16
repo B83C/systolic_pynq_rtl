@@ -100,10 +100,14 @@ class SystolicArray:
         self._output_words_per_beat = self.size * self.dwo // 32
         self._dma_base = ctrl_base_addr + 0x400000  # DMA at 0x40400000
 
-        # Per-module AXI-Lite base addresses (defaults: 16 KB after SA wrapper)
-        self.quant_base_addr      = quant_base_addr      if quant_base_addr      is not None else ctrl_base_addr + 0x10000
-        self.chlast_base_addr     = chlast_base_addr     if chlast_base_addr     is not None else ctrl_base_addr + 0x11000
-        self.tiled_base_addr      = tiled_base_addr      if tiled_base_addr      is not None else ctrl_base_addr + 0x12000
+        # Per-module AXI-Lite base addresses (from Vivado address map):
+        #   sa_wrapper_axi_ctrl  at ctrl_base_addr + 0x0000_0000
+        #   chlast_to_tiled      at ctrl_base_addr + 0x0000_1000
+        #   quantizer_wrapper    at ctrl_base_addr + 0x0000_2000
+        #   tiled_to_chlast      at ctrl_base_addr + 0x0000_3000
+        self.chlast_base_addr     = chlast_base_addr     if chlast_base_addr     is not None else ctrl_base_addr + 0x1000
+        self.quant_base_addr      = quant_base_addr      if quant_base_addr      is not None else ctrl_base_addr + 0x2000
+        self.tiled_base_addr      = tiled_base_addr      if tiled_base_addr      is not None else ctrl_base_addr + 0x3000
 
         # Open /dev/mem for direct register access (bypass XRT/PYNQ)
         self._mem_fd = os.open("/dev/mem", os.O_RDWR | os.O_SYNC)
