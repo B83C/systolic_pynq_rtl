@@ -1,0 +1,153 @@
+`timescale 1ns / 1ps
+
+// Tiled → channel-last converter (column-first output).
+// Input:  tiled — beat = one channel across OUT_COL spatial positions
+// Output: channel-last — beat = CH_PER_BEAT channels at one spatial position
+
+module tiled_to_chlast_sv #(
+    parameter DATA_WIDTH   = 8,
+    parameter CH_PER_BEAT  = 8,
+    parameter MAX_CHANNELS = 64,
+    parameter OUT_COL      = 8
+) (
+    input  logic                          clk,
+    rst_n,
+    input  logic [OUT_COL*DATA_WIDTH-1:0] s_axis_tdata,
+    input  logic                          s_axis_tvalid,
+    output logic                          s_axis_tready,
+    input  logic                          s_axis_tlast,
+
+    output logic [CH_PER_BEAT*DATA_WIDTH-1:0] m_axis_tdata,
+    output logic                              m_axis_tvalid,
+    input  logic                              m_axis_tready,
+    output logic                              m_axis_tlast,
+
+    input logic                         bypass_i,
+    input logic [$clog2(MAX_CHANNELS+1)-1:0] cfg_channels_i
+);
+
+  localparam CH_BLOCKS = MAX_CHANNELS / CH_PER_BEAT;
+  localparam CHBLK_BITS = (CH_BLOCKS > 1) ? $clog2(CH_BLOCKS) : 1;
+  localparam SP_BITS = (CH_PER_BEAT > 2) ? $clog2(CH_PER_BEAT) : 1;
+  localparam OUT_COL_BITS = $clog2(OUT_COL);
+  localparam CFG_CH_W = $clog2(MAX_CHANNELS + 1);
+
+  logic [CH_PER_BEAT*DATA_WIDTH-1:0] buffer[2][OUT_COL][CH_BLOCKS];
+
+  wire [CFG_CH_W-1:0] ch_blocks_max = cfg_channels_i / CH_PER_BEAT;
+
+  typedef enum {
+    OUT_REPLAYING,
+    OUT_IDLE
+  } state_t;
+  state_t state, state_nxt;
+
+  logic                out_buf_sel;
+  logic [CFG_CH_W-1:0] in_cnt;
+  logic [     OUT_COL_BITS-1:0] out_col_cnt;
+  logic [       CHBLK_BITS-1:0] out_ch_cnt;
+
+  wire  [          SP_BITS-1:0] inner = in_cnt[SP_BITS-1:0];
+  wire  [       CHBLK_BITS-1:0] ch_blk = in_cnt[$bits(in_cnt)-1:SP_BITS];
+  wire  [     OUT_COL_BITS-1:0] out_col = out_col_cnt;
+  wire  [       CHBLK_BITS-1:0] out_ch = out_ch_cnt;
+
+  wire                          in_last = in_cnt == cfg_channels_i - 1;
+  wire                          out_ch_last = out_ch_cnt == ch_blocks_max - 1;
+  wire                          out_last = (out_col_cnt == OUT_COL - 1) && out_ch_last;
+
+  logic pending, pending_has_tlast, output_has_tlast;
+  wire  input_last;
+  logic tlast_seen;
+
+  wire  input_sel = !out_buf_sel;
+
+  always_comb begin
+    unique case (state)
+      OUT_IDLE: state_nxt = (s_axis_tvalid && s_axis_tready && in_last) ? OUT_REPLAYING : OUT_IDLE;
+      OUT_REPLAYING:
+      state_nxt = (out_last && !pending && !input_last && m_axis_tready) ? OUT_IDLE : OUT_REPLAYING;
+    endcase
+  end
+
+  always @(posedge clk, negedge rst_n) begin
+    if (!rst_n) state <= OUT_IDLE;
+    else state <= state_nxt;
+  end
+
+  // output counters
+  always @(posedge clk, negedge rst_n) begin
+    if (!rst_n) begin
+      out_col_cnt <= 0;
+      out_ch_cnt  <= 0;
+    end else if (state == OUT_REPLAYING && m_axis_tready) begin
+      if (out_ch_last) begin
+        out_ch_cnt  <= 0;
+        out_col_cnt <= out_last ? 0 : out_col_cnt + 1;
+      end else begin
+        out_ch_cnt <= out_ch_cnt + 1;
+      end
+    end
+  end
+
+  // input capture counter
+  always @(posedge clk, negedge rst_n) begin
+    if (!rst_n) in_cnt <= 0;
+    else if (s_axis_tvalid && s_axis_tready) begin
+      in_cnt <= in_last ? 0 : in_cnt + 1;
+    end
+  end
+
+  // buffer swap (now handled in input capture block below)
+  /* removed - handled in input capture block */
+
+  wire accept_data = !bypass_i && s_axis_tvalid && s_axis_tready;
+  assign input_last = accept_data && in_last;
+
+  // input capture + tlast tracking
+  always @(posedge clk, negedge rst_n) begin
+    if (pending && out_last) begin
+      pending           <= 0;
+      pending_has_tlast <= 0;
+      output_has_tlast  <= pending_has_tlast;
+      out_buf_sel       <= !out_buf_sel;
+    end
+    if (!rst_n) begin
+      pending           <= 0;
+      tlast_seen        <= 0;
+      pending_has_tlast <= 0;
+      output_has_tlast  <= 0;
+    end else if (!bypass_i && (accept_data || tlast_seen)) begin
+      if (tlast_seen) begin
+        for (int c = 0; c < OUT_COL; c++) begin
+          buffer[input_sel][c][ch_blk][inner] <= 0;
+        end
+      end else begin
+        for (int c = 0; c < OUT_COL; c++) begin
+          buffer[input_sel][c][ch_blk][inner * DATA_WIDTH +: DATA_WIDTH]
+            <= s_axis_tdata[c*DATA_WIDTH+:DATA_WIDTH];
+        end
+      end
+
+      if (s_axis_tlast && !tlast_seen && !input_last) tlast_seen <= 1;
+
+      if (input_last) begin
+        if (state == OUT_REPLAYING && !out_last) begin
+          pending           <= 1;
+          pending_has_tlast <= s_axis_tlast;
+        end else begin
+          tlast_seen       <= 0;
+          output_has_tlast <= tlast_seen || s_axis_tlast;
+          out_buf_sel      <= !out_buf_sel;
+        end
+      end
+    end
+  end
+
+  assign s_axis_tready = bypass_i ? m_axis_tready :
+    rst_n && (state == OUT_IDLE || !pending) && !tlast_seen;
+  assign m_axis_tvalid = bypass_i ? s_axis_tvalid : rst_n && state == OUT_REPLAYING;
+  assign m_axis_tdata = bypass_i ? s_axis_tdata : buffer[out_buf_sel][out_col][out_ch];
+  assign m_axis_tlast = bypass_i ? s_axis_tlast : out_last && output_has_tlast;
+
+endmodule
