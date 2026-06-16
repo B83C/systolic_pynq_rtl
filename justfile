@@ -4,7 +4,7 @@ OBJCACHE := "ccache"
 # CXX := "ccache g++"
 
 test tb="sa_tb": 
-  verilator --cc {{tb}}.sv --trace-fst --build -CFLAGS -O0 -CFLAGS -fuse-ld=mold --verilate-jobs 16 --threads 4 --hierarchical --timing --binary --Mdir {{tb}}_obj/ -Wno-ASCRANGE -Wno-SELRANGE -Wno-MULTIDRIVEN -Wno-IMPLICITSTATIC -Wno-WIDTHEXPAND
+  verilator --cc {{tb}}.sv --trace-fst --build -CFLAGS -O0 -CFLAGS -fuse-ld=mold --verilate-jobs 16 --threads 4 --hierarchical --timing --binary --Mdir {{tb}}_obj/ -Wno-ASCRANGE -Wno-SELRANGE -Wno-MULTIDRIVEN -Wno-IMPLICITSTATIC -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC
   # verilator --cc {{tb}}.sv --trace-fst --build -CFLAGS -O0 -CFLAGS -fuse-ld=mold --verilate-jobs 16 --threads 4 --hierarchical --timing --binary --Mdir {{tb}}_obj/
   cd ./{{tb}}_obj/ && ./V{{tb}}
 
@@ -45,7 +45,7 @@ test-chlast-bp:
   verilator --cc tb_chlast_to_tiled_bp.sv --trace-fst --build \
     -CFLAGS -O0 -CFLAGS -fuse-ld=mold \
     --verilate-jobs 16 --threads 4 --hierarchical --timing --binary \
-    --Mdir tb_chlast_to_tiled_bp_obj/ -Wno-UNOPTFLAT -Wno-IMPLICITSTATIC -Wno-WIDTHEXPAND
+    --Mdir tb_chlast_to_tiled_bp_obj/ -Wno-UNOPTFLAT -Wno-IMPLICITSTATIC -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC
   cd tb_chlast_to_tiled_bp_obj/ && timeout 15 ./Vtb_chlast_to_tiled_bp
 
 # Chlast-to-tiled sustained backpressure
@@ -53,7 +53,7 @@ test-chlast-bp-sustained:
   verilator --cc tb_chlast_to_tiled_bp_sustained.sv --trace-fst --build \
     -CFLAGS -O0 -CFLAGS -fuse-ld=mold \
     --verilate-jobs 16 --threads 4 --hierarchical --timing --binary \
-    --Mdir tb_chlast_to_tiled_bp_sustained_obj/ -Wno-UNOPTFLAT -Wno-IMPLICITSTATIC -Wno-WIDTHEXPAND
+    --Mdir tb_chlast_to_tiled_bp_sustained_obj/ -Wno-UNOPTFLAT -Wno-IMPLICITSTATIC -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC
   cd tb_chlast_to_tiled_bp_sustained_obj/ && timeout 15 ./Vtb_chlast_to_tiled_bp_sustained
 
 # chlast_to_tiled / tiled_to_chlast arbitrary-size regression
@@ -61,7 +61,7 @@ test-ch-arbitrary:
   verilator --cc tb_ch_arbitrary.sv --trace-fst --build \
     -CFLAGS -O0 -CFLAGS -fuse-ld=mold \
     --verilate-jobs 16 --threads 4 --hierarchical --timing --binary \
-    --Mdir tb_ch_arbitrary_obj/ -Wno-UNOPTFLAT -Wno-IMPLICITSTATIC -Wno-WIDTHEXPAND
+    --Mdir tb_ch_arbitrary_obj/ -Wno-UNOPTFLAT -Wno-IMPLICITSTATIC -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC
   cd tb_ch_arbitrary_obj/ && timeout 15 ./Vtb_ch_arbitrary
 
 # Full pipeline: chlast -> SA -> quantizer -> tiled_to_chlast
@@ -69,7 +69,7 @@ test-pipeline:
   verilator --cc tb_pipeline.sv --trace-fst --build \
     -CFLAGS -O0 -CFLAGS -fuse-ld=mold \
     --verilate-jobs 16 --threads 4 --hierarchical --timing --binary \
-    --Mdir tb_pipeline_obj/ -Wno-UNOPTFLAT -Wno-IMPLICITSTATIC -Wno-WIDTHEXPAND
+    --Mdir tb_pipeline_obj/ -Wno-UNOPTFLAT -Wno-IMPLICITSTATIC -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC
   cd tb_pipeline_obj/ && timeout 30 ./Vtb_pipeline
 
 # Gather+flush tiled_to_chlast smoke test
