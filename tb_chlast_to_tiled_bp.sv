@@ -10,6 +10,7 @@ module tb_chlast_to_tiled_bp;
 
   localparam DW = 8, CH = 32, OC = 8, CH_PER_BEAT = 4;
   localparam REP_CNT = 1;
+  localparam N_IN = (CH / CH_PER_BEAT) * OC;  // 8 * 8 = 64
 
   logic clk, rst_n;
   logic [CH_PER_BEAT*DW-1:0] s_data;
@@ -92,7 +93,6 @@ module tb_chlast_to_tiled_bp;
     ct_axil_write(CT_REG_BYPASS, 0);
 
     // CH/CH_PER_BEAT * OUT_COL input beats, last beat has tlast=1
-    localparam N_IN = (CH / CH_PER_BEAT) * OC;  // 8 * 8 = 64
     for (int ch = 0; ch < N_IN; ch++) begin
       @(negedge clk);
       for (int c = 0; c < CH_PER_BEAT; c++)
