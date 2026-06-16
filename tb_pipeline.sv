@@ -270,7 +270,7 @@ module tb_pipeline;
 
   always @(posedge clk) begin
     if (tc_ov && tc_or) begin
-      for (int i = 0; i < SZ; i++) res[oc][i] = $signed(tc_out[i*DWO_Q+:DWO_Q]);
+      for (int i = 0; i < SZ; i++) res[oc][i] = 32'($signed(tc_out[i*DWO_Q+:DWO_Q]));
       oc <= oc + 1;
     end
     if (tc_ol) $display("  TC_TLAST at t=%0t ov=%0d or=%0d oc=%0d", $time, tc_ov, tc_or, oc);
@@ -576,7 +576,7 @@ module tb_pipeline;
         errs++;
       end
     end
-    if (errs) $display("FAIL: %0d errors", errs);
+    if (errs != 0) $display("FAIL: %0d errors", errs);
     else $display("PASS");
     $finish;
   end

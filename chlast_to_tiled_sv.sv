@@ -59,6 +59,9 @@ module chlast_to_tiled_sv #(
   localparam OUT_COL_BITS = $clog2(OUT_COL);
   localparam CFG_CH_W     = $clog2(MAX_CHANNELS + 1);
   localparam REPLAY_CNT_W = $clog2(MAX_REPLAY_CNT + 1);
+  // BRAM element is [CH_PER_BEAT*DATA_WIDTH-1:0]; index needs this many bits
+  localparam unsigned BUF_IDX_W = (CH_PER_BEAT * DATA_WIDTH > 1) ?
+                                    $clog2(CH_PER_BEAT * DATA_WIDTH) : 1;
   localparam REG_CT_CH      = 4'h0;
   localparam REG_CT_RPT     = 4'h4;
   localparam REG_CT_BYPASS  = 4'h8;
@@ -198,14 +201,17 @@ module chlast_to_tiled_sv #(
   genvar i;
   generate
     for (i = 0; i < OUT_COL; i++) begin : gen_out_conn
-      wire [$bits(
-out_buf_cntr
-) - SP_BITS -1:0] ch_block = out_buf_cntr[$bits(
-          out_buf_cntr
-      )-1:SP_BITS];
+      // out_buf_cntr[$bits(out_buf_cntr)-1:SP_BITS] captures the channel-
+      // block index.  Width is the natural slice; Vivado/Verilator may
+      // complain that it's wider than CHBLK_BITS but the upper bits
+      // are unused for the buffer index.
+      wire [CHBLK_BITS-1:0] ch_block = out_buf_cntr[SP_BITS +: CHBLK_BITS];
       wire [SP_BITS-1:0] inner = out_buf_cntr[SP_BITS-1:0];
+      // buffer is [CH_PER_BEAT*DATA_WIDTH-1:0] wide, so its index needs
+      // BUF_IDX_W bits.  inner is SP_BITS bits, so we extend to the
+      // right width to silence WIDTHTRUNC.
       assign output_row[i*DATA_WIDTH+:DATA_WIDTH] =
-        buffer[out_buf_sel][i][ch_block][inner * DATA_WIDTH +: DATA_WIDTH ];
+        buffer[out_buf_sel][i][ch_block][BUF_IDX_W'(inner * DATA_WIDTH) +: DATA_WIDTH ];
     end
   endgenerate
 
@@ -245,7 +251,9 @@ out_buf_cntr
   logic [OUT_COL_BITS - 1:0] col_cntr;
   logic [CHBLK_BITS - 1:0] row_cntr;
   wire input_sel = !out_buf_sel;
-  assign input_last = accept_data && (row_cntr == ch_blocks_max - 1) && (col_cntr == OUT_COL - 1);
+  assign input_last = accept_data
+    && (row_cntr == CHBLK_BITS'(ch_blocks_max - 1))
+    && (col_cntr == OUT_COL_BITS'(OUT_COL - 1));
   // (uses ch_blocks_max from cfg_channels_q)
 
   always @(posedge clk, negedge rst_n) begin
@@ -272,9 +280,9 @@ out_buf_cntr
         tlast_seen <= 1;
       end
 
-      if (row_cntr == ch_blocks_max - 1) begin
+      if (row_cntr == CHBLK_BITS'(ch_blocks_max - 1)) begin
         row_cntr <= 0;
-        if (col_cntr == OUT_COL - 1) begin
+        if (col_cntr == OUT_COL_BITS'(OUT_COL - 1)) begin
           col_cntr <= 0;
           if ((out_state == OUT_REPLAYING && !out_last)) begin
             pending <= 1;
@@ -285,10 +293,10 @@ out_buf_cntr
             out_buf_sel <= !out_buf_sel;
           end
         end else begin
-          col_cntr <= col_cntr + 1;
+          col_cntr <= col_cntr + 1'b1;
         end
       end else begin
-        row_cntr <= row_cntr + 1;
+        row_cntr <= row_cntr + 1'b1;
       end
     end
   end

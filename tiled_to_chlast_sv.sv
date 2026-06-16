@@ -52,6 +52,9 @@ module tiled_to_chlast_sv #(
   localparam SP_BITS = (CH_PER_BEAT > 2) ? $clog2(CH_PER_BEAT) : 1;
   localparam OUT_COL_BITS = $clog2(OUT_COL);
   localparam CFG_CH_W = $clog2(MAX_CHANNELS + 1);
+  // BRAM-element index needs $clog2(CH_PER_BEAT * DATA_WIDTH) bits
+  localparam unsigned BUF_IDX_W = (CH_PER_BEAT * DATA_WIDTH > 1) ?
+                                    $clog2(CH_PER_BEAT * DATA_WIDTH) : 1;
   localparam REG_TC_CH = 4'h0;
   localparam REG_TC_BYPASS = 4'h4;
   logic bypass_r;
@@ -98,18 +101,18 @@ module tiled_to_chlast_sv #(
   logic [OUT_COL_BITS-1:0] out_col_cnt;
   logic [  CHBLK_BITS-1:0] out_ch_cnt;
 
-  wire  [     SP_BITS-1:0] inner = in_cnt[SP_BITS-1:0];
-  wire  [  CHBLK_BITS-1:0] ch_blk = in_cnt[SP_BITS +: CHBLK_BITS];
+  wire [SP_BITS-1:0] inner = in_cnt[SP_BITS-1:0];
+  wire [CHBLK_BITS-1:0] ch_blk = in_cnt[SP_BITS +: CHBLK_BITS];
 
-  wire                     in_last = in_cnt == cfg_channels - 1;
-  wire                          out_ch_last = cfg_ch_block_mask_q[out_ch_cnt];
-  wire                     out_last = (out_col_cnt == OUT_COL_BITS'(OUT_COL - 1)) && out_ch_last;
+  wire in_last = in_cnt == cfg_channels - 1;
+  wire out_ch_last = cfg_ch_block_mask_q[out_ch_cnt];
+  wire out_last = (out_col_cnt == OUT_COL_BITS'(OUT_COL - 1)) && out_ch_last;
 
   logic pending, pending_has_tlast, output_has_tlast;
-  wire  input_last;
+  wire input_last;
   logic tlast_seen;
 
-  wire  input_sel = !out_buf_sel;
+  wire input_sel = !out_buf_sel;
 
   // `out_pipe_adv_comb` is true when the output pipeline reg can advance
   // (no back-pressure holding it).  The FSM uses this as the "beat
@@ -215,12 +218,12 @@ module tiled_to_chlast_sv #(
     end else if (!bypass_r && (accept_data || tlast_seen)) begin
       if (tlast_seen) begin
         for (int c = 0; c < OUT_COL; c++) begin
-          buffer[input_sel][c][ch_blk][6'(inner)] <= 0;
+          buffer[input_sel][c][ch_blk][BUF_IDX_W'(inner)] <= 0;
         end
       end else begin
         for (int c = 0; c < OUT_COL; c++) begin
-          buffer[input_sel][c][ch_blk][inner * DATA_WIDTH +: DATA_WIDTH]
-            <= s_axis_tdata[6'(c*DATA_WIDTH)+:DATA_WIDTH];
+          buffer[input_sel][c][ch_blk][BUF_IDX_W'(inner * DATA_WIDTH) +: DATA_WIDTH]
+            <= s_axis_tdata[BUF_IDX_W'(c*DATA_WIDTH)+:DATA_WIDTH];
         end
       end
 
