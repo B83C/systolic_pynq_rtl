@@ -2,13 +2,16 @@
 `define TB_TEST_18_SVH
 `include "tb/tb_common.svh"
 task test_18_single_element_ring();
+  int S_LOAD_A = 32'd1;
+  int S_LOAD_B = 32'd2;
+
   $display("=== TEST 18: Single-element ring (start==end) ===");
   errors = 0; out_count = 0;
 
   soft_rst_via_axil();
   repeat (5) @(posedge clk);
   // Force IDLE if needed
-  if (dut.state == 2'd2) begin s_axis_B_tlast = 1; @(posedge clk); s_axis_B_tlast = 0; end
+  if (dut.state == S_LOAD_B) begin s_axis_B_tlast = 1; @(posedge clk); s_axis_B_tlast = 0; end
   repeat (3) @(posedge clk);
 
   // Set a_loop_start = a_loop_end = 0 → single-element ring
@@ -18,7 +21,7 @@ task test_18_single_element_ring();
   // Trigger A_LOAD
   axil_write(REG_A_LOAD, 0);
   repeat (3) @(posedge clk);
-  if (dut.state != 2'd1) begin
+  if (dut.state != S_LOAD_A) begin
     $display("  FAIL[1]: state=%0d expected LOAD_A", dut.state); errors++;
   end else $display("    LOAD_A entered");
 
@@ -40,7 +43,7 @@ task test_18_single_element_ring();
   repeat (3) @(posedge clk);
 
   // Verify state exited LOAD_A
-  if (dut.state == 2'd1) begin
+  if (dut.state == S_LOAD_A) begin
     $display("  FAIL[2]: state stuck in LOAD_A after single row"); errors++;
   end else $display("    state exited LOAD_A (state=%0d)", dut.state);
 

@@ -144,8 +144,10 @@ module quantizer #(
     wire signed [MUL_Q_W-1:0] q_out[SIZE];
     generate
         for (genvar qi = 0; qi < SIZE; qi++) begin : gen_clamp
-            assign q_with_zp[qi] = $signed(q_shifted_r[qi][MUL_Q_W-1:0])
-                                 + $signed({zp_out[ZP_OUT_W-1], zp_out});
+            assign q_with_zp[qi] = MUL_Q_W'(
+                $signed(q_shifted_r[qi][MUL_Q_W-1:0])
+                + $signed({zp_out[ZP_OUT_W-1], zp_out})
+            );
             assign q_out[qi]     = (q_with_zp[qi] > MUL_Q_W'(ZP_OUT_CLAMP_HI)) ? MUL_Q_W'(ZP_OUT_CLAMP_HI) :
                                    (q_with_zp[qi] < MUL_Q_W'(ZP_OUT_CLAMP_LO)) ? MUL_Q_W'(ZP_OUT_CLAMP_LO) :
                                                                                 q_with_zp[qi];

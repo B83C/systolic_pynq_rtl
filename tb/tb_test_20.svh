@@ -13,11 +13,14 @@ endfunction
 task check_quant(string label, int nrows);
     for (int r = 0; r < nrows; r++) begin
         for (int c = 0; c < SIZE; c++) begin
-            if (q_result[r][c] !== quant_exp(result[r][c], cur_mul_q, cur_shift, cur_zp_out)) begin
+            automatic int mq = 32'(cur_mul_q);
+            automatic int sh = 32'(cur_shift);
+            automatic int zp = 32'(cur_zp_out);
+            if (q_result[r][c] !== quant_exp(result[r][c], mq, sh, zp)) begin
                 $display("  %s [%0d][%0d]: got %0d, exp %0d (raw=%0d, q=%0d>>%0d+%0d)",
                          label, r, c, q_result[r][c],
-                         quant_exp(result[r][c], cur_mul_q, cur_shift, cur_zp_out),
-                         result[r][c], cur_mul_q, cur_shift, cur_zp_out);
+                         quant_exp(result[r][c], mq, sh, zp),
+                         result[r][c], mq, sh, zp);
                 errors++;
             end
         end

@@ -44,7 +44,7 @@ task automatic test_08_output_pressure();
       automatic int match = 1;
       for (int c = 0; c < SIZE; c++)
         if (result[i][c] !== exp_B1[r][c]) match = 0;
-      if (match) found = 1;
+      if (match != 0) found = 1;
     end
     if (!found) begin
       $write("  FAIL: output[%0d] =", i);

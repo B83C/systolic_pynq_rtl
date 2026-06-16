@@ -15,13 +15,13 @@ module sa_wrapper_axi_ctrl_tb;
   logic [AXI_OUT_W-1:0] m_axis_tdata;
   logic m_axis_tvalid, m_axis_tready, m_axis_tlast;
   logic s_axil_awvalid, s_axil_awready;
-  logic [ 5:0] s_axil_awaddr;
+  logic [ 6:0] s_axil_awaddr;
   logic [31:0] s_axil_wdata;
   logic s_axil_wvalid, s_axil_wready;
   logic [1:0] s_axil_bresp;
   logic s_axil_bvalid, s_axil_bready;
   logic s_axil_arvalid, s_axil_arready;
-  logic [ 5:0] s_axil_araddr;
+  logic [ 6:0] s_axil_araddr;
   logic [31:0] s_axil_rdata;
   logic [ 1:0] s_axil_rresp;
   logic s_axil_rvalid, s_axil_rready;
@@ -166,7 +166,7 @@ module sa_wrapper_axi_ctrl_tb;
     int yunet_A[4][4] = '{'{ 11,  21,  35, -37}, '{-26, -19,   6,  19}, '{ 31, -15,  31,  20}, '{  6,  25, -15, -20}};
   always @(posedge clk)
     if (q_m_axis_tvalid) begin
-      for (int i = 0; i < SIZE; i++) q_result[q_out_count][i] = $signed(q_m_axis_tdata[i*8+:8]);
+      for (int i = 0; i < SIZE; i++) q_result[q_out_count][i] = 32'($signed(q_m_axis_tdata[i*8+:8]));
       q_result_tlast[q_out_count] = q_m_axis_tlast;
       q_out_count++;
     end

@@ -8,8 +8,8 @@ task automatic test_13_c_matrix();
   m_axis_tready = 1;
   axil_write(REG_ACC_CNT, 1);
   axil_write(REG_FB_CNT, 0);
-  axil_write(6'h24, SIZE - 1);   // C_LOOP_END
-  axil_write(6'h20, 0);          // C_LOOP_START
+  axil_write(7'h24, SIZE - 1);   // C_LOOP_END
+  axil_write(7'h20, 0);          // C_LOOP_START
   load_A();
 
   // Trigger C_LOAD — state now IDLE (load_A used tlast=1 on A)

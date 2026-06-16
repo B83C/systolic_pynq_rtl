@@ -103,6 +103,8 @@ module sa_wrapper_axi_ctrl_sv #(
   // 0x24  C_LOOP_END:   last ring index for C
   // 0x28  SIZE:         RO  array dimension parameter value
   // 0x2C  RST_INDEX:    write to reset ring pointers and pending flags
+  // 0x40  A_RD_PTR:     RO  current A ring read pointer
+  // 0x44  C_RD_PTR:     RO  current C ring read pointer
   // 0x30  MUL_Q:        RW  UINT16 quantized multiplier
   // 0x34  SHIFT:        RW  UINT5  right-shift amount
   // 0x38  ZP_OUT:       RW  INT8   output zero-point
@@ -243,6 +245,8 @@ module sa_wrapper_axi_ctrl_sv #(
           REG_A_LOOP_END:   s_axil_rdata <= {{32 - A_RING_ADDR_W{1'h0}}, a_loop_end};
           REG_C_LOOP_START: s_axil_rdata <= {{32 - C_RING_ADDR_W{1'h0}}, c_loop_start};
           REG_C_LOOP_END:   s_axil_rdata <= {{32 - C_RING_ADDR_W{1'h0}}, c_loop_end};
+          REG_A_RD_PTR:     s_axil_rdata <= {{32 - A_RING_ADDR_W{1'h0}}, a_rd_ptr};
+          REG_C_RD_PTR:     s_axil_rdata <= {{32 - C_RING_ADDR_W{1'h0}}, c_rd_ptr};
           REG_SIZE:         s_axil_rdata <= SIZE;
           REG_ZP_IN:        s_axil_rdata <= {{32 - ZP_IN_W{1'b0}}, zp_in};
           default:          s_axil_rdata <= 32'h0;
@@ -290,10 +294,9 @@ module sa_wrapper_axi_ctrl_sv #(
         for (int i = 0; i < SIZE; i++) begin
           if (current_row[i]) begin
             for (int j = 0; j < SIZE; j++)
-            b_row[i][j] <= $signed(
-                {1'b0, s_axis_B_tdata[j*DATA_WIDTH_IN+:DATA_WIDTH_IN]}
-            ) - $signed(
-                zp_in
+            b_row[i][j] <= DATA_WIDTH_IN'(
+                $signed({1'b0, s_axis_B_tdata[j*DATA_WIDTH_IN+:DATA_WIDTH_IN]})
+                - $signed(zp_in)
             );
           end
         end

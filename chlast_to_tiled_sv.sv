@@ -141,8 +141,11 @@ module chlast_to_tiled_sv #(
     end else begin
       if (axil_wr_en) begin
         case (s_axil_awaddr)
-          REG_CT_CH:     cfg_channels <= s_axil_wdata[CFG_CH_W-1:0];
-          REG_CT_RPT:    repeat_cnt   <= s_axil_wdata[REPLAY_CNT_W-1:0];
+          REG_CT_CH:     cfg_channels <= (s_axil_wdata[CFG_CH_W-1:0] == 0 || s_axil_wdata[CFG_CH_W-1:0] > MAX_CHANNELS)
+                                          ? MAX_CHANNELS : s_axil_wdata[CFG_CH_W-1:0];
+          REG_CT_RPT:    repeat_cnt   <= (s_axil_wdata[REPLAY_CNT_W-1:0] == 0)
+                                          ? 1 : (s_axil_wdata[REPLAY_CNT_W-1:0] > MAX_REPLAY_CNT
+                                                 ? MAX_REPLAY_CNT : s_axil_wdata[REPLAY_CNT_W-1:0]);
           REG_CT_BYPASS: bypass_r    <= s_axil_wdata[0];
           default: ;
         endcase

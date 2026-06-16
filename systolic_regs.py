@@ -38,6 +38,26 @@ class TiledReg(IntEnum):
     BYPASS  = 0x4   # [0]   0=normal, 1=passthrough
 
 # -----------------------------------------------------------------------
+# sa_wrapper_axi_ctrl_0
+# -----------------------------------------------------------------------
+class SaReg(IntEnum):
+    STATE        = 0x00  # [1:0] state (RO)
+    STATUS       = 0x04  # [0]=b_underflow (clear-on-read)
+    C_LOAD       = 0x08  # write to trigger C_LOAD
+    FB_CNT       = 0x0C  # [7:0] accumulation group size
+    A_LOAD       = 0x10  # write to trigger A_LOAD
+    ACC_CNT      = 0x14  # RO current accumulation count
+    A_LOOP_START = 0x18  # A ring start index
+    A_LOOP_END   = 0x1C  # A ring end index
+    C_LOOP_START = 0x20  # C ring start index
+    C_LOOP_END   = 0x24  # C ring end index
+    SIZE         = 0x28  # RO array dimension parameter
+    RST_INDEX    = 0x2C  # write to reset ring pointers + pending flags
+    A_RD_PTR     = 0x40  # RO current A ring read pointer
+    C_RD_PTR     = 0x44  # RO current C ring read pointer
+    ZP_IN        = 0x3C  # [7:0] INT8 input zero-point (subtracted from B)
+
+# -----------------------------------------------------------------------
 # Base addresses (override these if your block design differs)
 # -----------------------------------------------------------------------
 @dataclass

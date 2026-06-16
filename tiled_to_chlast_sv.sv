@@ -99,11 +99,11 @@ module tiled_to_chlast_sv #(
   logic [  CHBLK_BITS-1:0] out_ch_cnt;
 
   wire  [     SP_BITS-1:0] inner = in_cnt[SP_BITS-1:0];
-  wire  [  CHBLK_BITS-1:0] ch_blk = in_cnt[$bits(in_cnt)-1:SP_BITS];
+  wire  [  CHBLK_BITS-1:0] ch_blk = in_cnt[SP_BITS +: CHBLK_BITS];
 
   wire                     in_last = in_cnt == cfg_channels - 1;
   wire                          out_ch_last = cfg_ch_block_mask_q[out_ch_cnt];
-  wire                     out_last = (out_col_cnt == OUT_COL - 1) && out_ch_last;
+  wire                     out_last = (out_col_cnt == OUT_COL_BITS'(OUT_COL - 1)) && out_ch_last;
 
   logic pending, pending_has_tlast, output_has_tlast;
   wire  input_last;
@@ -143,7 +143,8 @@ module tiled_to_chlast_sv #(
     end else begin
       if (axil_wr_en) begin
         case (s_axil_awaddr)
-          REG_TC_CH:     cfg_channels <= s_axil_wdata[CFG_CH_W-1:0];
+          REG_TC_CH:     cfg_channels <= (s_axil_wdata[CFG_CH_W-1:0] == 0 || s_axil_wdata[CFG_CH_W-1:0] > MAX_CHANNELS)
+                                          ? MAX_CHANNELS : s_axil_wdata[CFG_CH_W-1:0];
           REG_TC_BYPASS: bypass_r <= s_axil_wdata[0];
           default:       ;
         endcase
@@ -214,12 +215,12 @@ module tiled_to_chlast_sv #(
     end else if (!bypass_r && (accept_data || tlast_seen)) begin
       if (tlast_seen) begin
         for (int c = 0; c < OUT_COL; c++) begin
-          buffer[input_sel][c][ch_blk][inner] <= 0;
+          buffer[input_sel][c][ch_blk][6'(inner)] <= 0;
         end
       end else begin
         for (int c = 0; c < OUT_COL; c++) begin
           buffer[input_sel][c][ch_blk][inner * DATA_WIDTH +: DATA_WIDTH]
-            <= s_axis_tdata[c*DATA_WIDTH+:DATA_WIDTH];
+            <= s_axis_tdata[6'(c*DATA_WIDTH)+:DATA_WIDTH];
         end
       end
 

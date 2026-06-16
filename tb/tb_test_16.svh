@@ -2,6 +2,11 @@
 `define TB_TEST_16_SVH
 `include "tb/tb_common.svh"
 task automatic test_16_softrst_in_loadc();
+  // state_t enum: LOAD_A=0, LOAD_B=1, LOAD_C=2.
+  int S_LOAD_A  = 32'd0;
+  int S_LOAD_B  = 32'd1;
+  int S_LOAD_C  = 32'd2;
+
   $display("=== TEST 16: soft_reset in LOAD_C → A_LOAD ===");
   reset_test();
   errors = 0; out_count = 0;
@@ -12,7 +17,7 @@ task automatic test_16_softrst_in_loadc();
   // Enter LOAD_C
   $display("  [1] Enter LOAD_C, stream 2 of 4 C values...");
   load_A();
-  axil_write(6'h24, SIZE - 1);
+  axil_write(7'h24, SIZE - 1);
   axil_write(REG_C_LOAD, 0);
   repeat (5) @(posedge clk);
   // Stream only 2 C values (incomplete)
@@ -21,14 +26,14 @@ task automatic test_16_softrst_in_loadc();
   end
   @(posedge clk); s_axis_B_tvalid = 0;
   repeat (3) @(posedge clk);
-  $display("    state=%0d (LOAD_C=%0d)", dut.state, 2'd3);
+  $display("    state=%0d (LOAD_C=%0d)", dut.state, S_LOAD_C);
 
   // Soft reset — should force state to IDLE
   $display("  [2] soft_reset → should go to IDLE");
   soft_rst_via_axil();
   repeat (5) @(posedge clk);
   $display("    state=%0d (expect IDLE or LOAD_B)", dut.state);
-  if (dut.state != 2'd0 && dut.state != 2'd2) begin
+  if (dut.state != S_LOAD_A && dut.state != S_LOAD_B) begin
     $display("  FAIL[2]: state stuck at %0d", dut.state); errors++;
   end
 

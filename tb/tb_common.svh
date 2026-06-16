@@ -42,7 +42,7 @@ endfunction
 // -----------------------------------------------------------------------
 // tasks
 // -----------------------------------------------------------------------
-task axil_read(input [5:0] addr, output [31:0] data);
+task axil_read(input [6:0] addr, output [31:0] data);
   s_axil_arvalid = 1;
   s_axil_araddr  = addr;
   @(posedge clk);
@@ -54,7 +54,7 @@ task axil_read(input [5:0] addr, output [31:0] data);
   s_axil_rready = 0;
 endtask
 
-task axil_write(input [5:0] addr, input [31:0] data);
+task axil_write(input [6:0] addr, input [31:0] data);
   @(posedge clk);
   s_axil_awvalid = 1;
   s_axil_awaddr  = addr;
