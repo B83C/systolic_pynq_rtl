@@ -2,3 +2,10 @@
 *.jou
 *.log
 obj_dir/
+build/
+*.bit
+*.hwh
+*.ipynb
+waveform.fst
+vivado_*.backup.*
+.Xil/
