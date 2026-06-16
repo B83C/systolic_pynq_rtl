@@ -1,6 +1,22 @@
 `ifndef TB_TEST_20_SVH
 `define TB_TEST_20_SVH
 
+// Latched copies of SA wrapper's runtime config (driven by wen/wdata pulses)
+logic [15:0] cur_mul_q;
+logic [ 4:0] cur_shift;
+logic [ 7:0] cur_zp_out;
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        cur_mul_q  <= 0;
+        cur_shift  <= 0;
+        cur_zp_out <= 0;
+    end else begin
+        if (mul_q_wen)  cur_mul_q  <= mul_q_wdata;
+        if (shift_wen)  cur_shift  <= shift_wdata;
+        if (zp_out_wen) cur_zp_out <= zp_out_wdata;
+    end
+end
+
 // Compute expected quantized output given raw and quant params
 function int quant_exp(input int raw, input int mq, input int sh, input int zp);
     automatic int prod = raw * mq;
@@ -13,11 +29,11 @@ endfunction
 task check_quant(string label, int nrows);
     for (int r = 0; r < nrows; r++) begin
         for (int c = 0; c < SIZE; c++) begin
-            if (q_result[r][c] !== quant_exp(result[r][c], o_mul_q, o_shift, o_zp_out)) begin
+            if (q_result[r][c] !== quant_exp(result[r][c], cur_mul_q, cur_shift, cur_zp_out)) begin
                 $display("  %s [%0d][%0d]: got %0d, exp %0d (raw=%0d, q=%0d>>%0d+%0d)",
                          label, r, c, q_result[r][c],
-                         quant_exp(result[r][c], o_mul_q, o_shift, o_zp_out),
-                         result[r][c], o_mul_q, o_shift, o_zp_out);
+                         quant_exp(result[r][c], cur_mul_q, cur_shift, cur_zp_out),
+                         result[r][c], cur_mul_q, cur_shift, cur_zp_out);
                 errors++;
             end
         end

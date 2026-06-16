@@ -24,10 +24,16 @@ module chlast_to_tiled_sv #(
     output logic                          m_axis_tlast,
 
     input logic                            bypass_i,
-    input logic [$clog2(MAX_CHANNELS+1)-1:0]   cfg_channels_i,
-    input logic [$clog2(MAX_REPLAY_CNT+1)-1:0] repeat_cnt_i
+    input logic                            cfg_channels_wen,
+    input logic [$clog2(MAX_CHANNELS+1)-1:0]   cfg_channels_wdata,
+    input logic                            repeat_cnt_wen,
+    input logic [$clog2(MAX_REPLAY_CNT+1)-1:0] repeat_cnt_wdata
 );
 
+  initial assert((MAX_CHANNELS & (MAX_CHANNELS - 1)) == 0)
+    else $fatal(1, "chlast_to_tiled_sv: MAX_CHANNELS must be a power of 2");
+
+  localparam unsigned CH_PER_BEAT_LOG2 = $clog2(CH_PER_BEAT);
   localparam CH_BLOCKS = MAX_CHANNELS / CH_PER_BEAT;
   localparam CHBLK_BITS = (CH_BLOCKS > 1) ? $clog2(CH_BLOCKS) : 1;
   localparam SP_BITS = (CH_PER_BEAT > 2) ? $clog2(CH_PER_BEAT) : 1;
@@ -41,7 +47,9 @@ module chlast_to_tiled_sv #(
 
   logic [CH_PER_BEAT*DATA_WIDTH-1:0] buffer[2][OUT_COL][CH_BLOCKS];
 
-  wire [CFG_CH_W-1:0] ch_blocks_max = cfg_channels_i / CH_PER_BEAT;
+  logic [CFG_CH_W-1:0]     cfg_channels;
+  logic [REPLAY_CNT_W-1:0] repeat_cnt;
+  wire  [CFG_CH_W-1:0]     ch_blocks_max = cfg_channels >> CH_PER_BEAT_LOG2;
 
   typedef enum {
     OUT_REPLAYING,
@@ -55,7 +63,7 @@ module chlast_to_tiled_sv #(
 
   logic pending, pending_has_tlast;
   wire  last_replay = out_replay_cnt == 0;
-  wire  out_last = last_replay && out_buf_cntr == cfg_channels_i - 1;
+  wire  out_last = last_replay && out_buf_cntr == cfg_channels - 1;
   wire  input_last;
   logic tlast_seen;
   logic output_has_tlast;
@@ -91,24 +99,30 @@ module chlast_to_tiled_sv #(
 
   always @(posedge clk, negedge rst_n) begin
     if (!rst_n) begin
-      out_buf_cntr   <= 0;
-      out_replay_cnt <= repeat_cnt_i - 1;
-    end else if (bypass_i) begin
-      out_buf_cntr   <= 0;
-      out_replay_cnt <= repeat_cnt_i - 1;
-    end else if (out_state == OUT_REPLAYING && m_axis_tready) begin
-      if (out_buf_cntr == cfg_channels_i - 1) begin
-        out_buf_cntr <= 0;
-        if (out_replay_cnt == 0) begin
-          out_replay_cnt <= repeat_cnt_i - 1;
+      cfg_channels  <= MAX_CHANNELS;
+      repeat_cnt    <= 1;
+      out_buf_cntr  <= 0;
+      out_replay_cnt <= repeat_cnt - 1;
+    end else begin
+      if (cfg_channels_wen) cfg_channels <= cfg_channels_wdata;
+      if (repeat_cnt_wen)   repeat_cnt   <= repeat_cnt_wdata;
+      if (bypass_i) begin
+        out_buf_cntr   <= 0;
+        out_replay_cnt <= repeat_cnt - 1;
+      end else if (out_state == OUT_REPLAYING && m_axis_tready) begin
+        if (out_buf_cntr == cfg_channels - 1) begin
+          out_buf_cntr <= 0;
+          if (out_replay_cnt == 0) begin
+            out_replay_cnt <= repeat_cnt - 1;
+          end else begin
+            out_replay_cnt <= out_replay_cnt - 1;
+          end
         end else begin
-          out_replay_cnt <= out_replay_cnt - 1;
+          out_buf_cntr <= out_buf_cntr + 1;
         end
-      end else begin
-        out_buf_cntr <= out_buf_cntr + 1;
+      end else if (out_state_nxt == OUT_REPLAYING) begin
+        out_replay_cnt <= repeat_cnt - 1;
       end
-    end else if (out_state_nxt == OUT_REPLAYING) begin
-      out_replay_cnt <= repeat_cnt_i - 1;
     end
   end
 

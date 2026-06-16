@@ -19,7 +19,8 @@ module tiled_to_chlast #(
     output wire                              m_axis_tlast,
 
     input  wire                                    bypass_i,
-    input  wire [$clog2(MAX_CHANNELS+1)-1:0] cfg_channels_i
+    input  wire                                    cfg_channels_wen,
+    input  wire [$clog2(MAX_CHANNELS+1)-1:0]       cfg_channels_wdata
 );
 
   tiled_to_chlast_sv #(
@@ -28,18 +29,19 @@ module tiled_to_chlast #(
       .MAX_CHANNELS (MAX_CHANNELS),
       .OUT_COL      (OUT_COL)
   ) impl (
-      .clk            (clk),
-      .rst_n          (rst_n),
-      .s_axis_tdata   (s_axis_tdata),
-      .s_axis_tvalid  (s_axis_tvalid),
-      .s_axis_tready  (s_axis_tready),
-      .s_axis_tlast   (s_axis_tlast),
-      .m_axis_tdata   (m_axis_tdata),
-      .m_axis_tvalid  (m_axis_tvalid),
-      .m_axis_tready  (m_axis_tready),
-      .m_axis_tlast   (m_axis_tlast),
-      .bypass_i       (bypass_i),
-      .cfg_channels_i (cfg_channels_i)
+      .clk               (clk),
+      .rst_n             (rst_n),
+      .s_axis_tdata      (s_axis_tdata),
+      .s_axis_tvalid     (s_axis_tvalid),
+      .s_axis_tready     (s_axis_tready),
+      .s_axis_tlast      (s_axis_tlast),
+      .m_axis_tdata      (m_axis_tdata),
+      .m_axis_tvalid     (m_axis_tvalid),
+      .m_axis_tready     (m_axis_tready),
+      .m_axis_tlast      (m_axis_tlast),
+      .bypass_i          (bypass_i),
+      .cfg_channels_wen  (cfg_channels_wen),
+      .cfg_channels_wdata(cfg_channels_wdata)
   );
 
 endmodule

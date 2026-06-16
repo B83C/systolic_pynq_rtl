@@ -22,9 +22,12 @@ module quantizer #(
     input  logic clk,
     input  logic rst_n,
 
-    input  logic [MUL_Q_W-1:0]  mul_q,
-    input  logic [SHIFT_W-1:0]  shift,
-    input  logic [ZP_OUT_W-1:0] zp_out,
+    input  logic                       mul_q_wen,
+    input  logic [MUL_Q_W-1:0]         mul_q_wdata,
+    input  logic                       shift_wen,
+    input  logic [SHIFT_W-1:0]         shift_wdata,
+    input  logic                       zp_out_wen,
+    input  logic [ZP_OUT_W-1:0]        zp_out_wdata,
 
     input  logic [SIZE*DATA_WIDTH_IN -1:0] s_axis_tdata,
     input  logic                           s_axis_tvalid,
@@ -43,6 +46,21 @@ module quantizer #(
             assign acc[i] = s_axis_tdata[i*DATA_WIDTH_IN+:DATA_WIDTH_IN];
         end
     endgenerate
+
+    logic [MUL_Q_W-1:0]  mul_q;
+    logic [SHIFT_W-1:0]  shift;
+    logic [ZP_OUT_W-1:0] zp_out;
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            mul_q  <= 0;
+            shift  <= 0;
+            zp_out <= 0;
+        end else begin
+            if (mul_q_wen)  mul_q  <= mul_q_wdata;
+            if (shift_wen)  shift  <= shift_wdata;
+            if (zp_out_wen) zp_out <= zp_out_wdata;
+        end
+    end
 
     // -- stage 0 registers (raw accumulator input) --
     logic signed [ACCUM_WIDTH-1:0] acc_r[SIZE];

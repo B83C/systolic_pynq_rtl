@@ -12,14 +12,12 @@ module sa_wrapper_axi_ctrl_sv #(
     parameter  unsigned MAX_SHIFT      = 31,
     parameter  integer  MAX_ZP_OUT     = 127,
     parameter  integer  MIN_ZP_OUT     = -128,
-    parameter  integer  MAX_ZP_IN      = 127,
-    parameter  integer  MIN_ZP_IN      = -128,
     parameter  unsigned MAX_OUT_CH     = 127,
     parameter  unsigned MAX_REPEAT_CNT = 31,
     localparam unsigned O_MUL_Q_W      = $clog2(MAX_MUL_Q + 1),
     localparam unsigned O_SHIFT_W      = $clog2(MAX_SHIFT + 1),
     localparam unsigned O_ZP_OUT_W     = $clog2(MAX_ZP_OUT - MIN_ZP_OUT + 1),
-    localparam unsigned O_ZP_IN_W      = $clog2(MAX_ZP_IN - MIN_ZP_IN + 1),
+    localparam unsigned O_ZP_IN_W      = 8,
     localparam unsigned O_OUT_CH_W     = $clog2(MAX_OUT_CH + 1),
     localparam unsigned O_REPEAT_CNT_W = $clog2(MAX_REPEAT_CNT + 1),
     localparam unsigned AXI_IN_WIDTH   = SIZE * DATA_WIDTH_IN,
@@ -57,15 +55,18 @@ module sa_wrapper_axi_ctrl_sv #(
     output reg                   s_axil_rvalid,
     input  wire                  s_axil_rready,
 
-    output wire a_bypass,
     output wire axis_bypass,
 
-    output reg [     O_MUL_Q_W-1:0] o_mul_q,
-    output reg [     O_SHIFT_W-1:0] o_shift,
-    output reg [    O_ZP_OUT_W-1:0] o_zp_out,
-    output reg [     O_ZP_IN_W-1:0] o_zp_in,
-    output reg [    O_OUT_CH_W-1:0] o_out_channels,
-    output reg [O_REPEAT_CNT_W-1:0] o_repeat_cnt
+    output wire                       mul_q_wen,
+    output wire [    O_MUL_Q_W-1:0]   mul_q_wdata,
+    output wire                       shift_wen,
+    output wire [    O_SHIFT_W-1:0]   shift_wdata,
+    output wire                       zp_out_wen,
+    output wire [   O_ZP_OUT_W-1:0]   zp_out_wdata,
+    output wire                       cfg_channels_wen,
+    output wire [   O_OUT_CH_W-1:0]   cfg_channels_wdata,
+    output wire                       repeat_cnt_wen,
+    output wire [O_REPEAT_CNT_W-1:0]  repeat_cnt_wdata
 );
 
   logic new_batch;
@@ -513,12 +514,16 @@ module sa_wrapper_axi_ctrl_sv #(
     end
   end
 
-  assign o_mul_q = mul_q;
-  assign o_shift = shift;
-  assign o_zp_out = zp_out;
-  assign o_zp_in = zp_in;
-  assign o_out_channels = out_channels;
-  assign o_repeat_cnt = repeat_cnt;
+  assign mul_q_wen         = axil_wr_en && (s_axil_awaddr == REG_MUL_Q);
+  assign mul_q_wdata       = s_axil_wdata[O_MUL_Q_W-1:0];
+  assign shift_wen         = axil_wr_en && (s_axil_awaddr == REG_SHIFT);
+  assign shift_wdata       = s_axil_wdata[O_SHIFT_W-1:0];
+  assign zp_out_wen        = axil_wr_en && (s_axil_awaddr == REG_ZP_OUT);
+  assign zp_out_wdata      = s_axil_wdata[O_ZP_OUT_W-1:0];
+  assign cfg_channels_wen  = axil_wr_en && (s_axil_awaddr == REG_OUT_CH);
+  assign cfg_channels_wdata= s_axil_wdata[O_OUT_CH_W-1:0];
+  assign repeat_cnt_wen    = axil_wr_en && (s_axil_awaddr == REG_REPEAT_CNT);
+  assign repeat_cnt_wdata  = s_axil_wdata[O_REPEAT_CNT_W-1:0];
   assign axis_bypass = axis_bypass_r;
 
   wire [AXI_OUT_WIDTH-1:0] m_axis_tdata_raw;

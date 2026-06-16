@@ -23,9 +23,14 @@ module tiled_to_chlast_sv #(
     output logic                              m_axis_tlast,
 
     input logic                         bypass_i,
-    input logic [$clog2(MAX_CHANNELS+1)-1:0] cfg_channels_i
+    input logic                         cfg_channels_wen,
+    input logic [$clog2(MAX_CHANNELS+1)-1:0] cfg_channels_wdata
 );
 
+  initial assert((MAX_CHANNELS & (MAX_CHANNELS - 1)) == 0)
+    else $fatal(1, "tiled_to_chlast_sv: MAX_CHANNELS must be a power of 2");
+
+  localparam unsigned CH_PER_BEAT_LOG2 = $clog2(CH_PER_BEAT);
   localparam CH_BLOCKS = MAX_CHANNELS / CH_PER_BEAT;
   localparam CHBLK_BITS = (CH_BLOCKS > 1) ? $clog2(CH_BLOCKS) : 1;
   localparam SP_BITS = (CH_PER_BEAT > 2) ? $clog2(CH_PER_BEAT) : 1;
@@ -34,7 +39,8 @@ module tiled_to_chlast_sv #(
 
   logic [CH_PER_BEAT*DATA_WIDTH-1:0] buffer[2][OUT_COL][CH_BLOCKS];
 
-  wire [CFG_CH_W-1:0] ch_blocks_max = cfg_channels_i / CH_PER_BEAT;
+  logic [CFG_CH_W-1:0] cfg_channels;
+  wire  [CFG_CH_W-1:0] ch_blocks_max = cfg_channels >> CH_PER_BEAT_LOG2;
 
   typedef enum {
     OUT_REPLAYING,
@@ -52,7 +58,7 @@ module tiled_to_chlast_sv #(
   wire  [     OUT_COL_BITS-1:0] out_col = out_col_cnt;
   wire  [       CHBLK_BITS-1:0] out_ch = out_ch_cnt;
 
-  wire                          in_last = in_cnt == cfg_channels_i - 1;
+  wire                          in_last = in_cnt == cfg_channels - 1;
   wire                          out_ch_last = out_ch_cnt == ch_blocks_max - 1;
   wire                          out_last = (out_col_cnt == OUT_COL - 1) && out_ch_last;
 
@@ -78,14 +84,18 @@ module tiled_to_chlast_sv #(
   // output counters
   always @(posedge clk, negedge rst_n) begin
     if (!rst_n) begin
+      cfg_channels <= MAX_CHANNELS;
       out_col_cnt <= 0;
       out_ch_cnt  <= 0;
-    end else if (state == OUT_REPLAYING && m_axis_tready) begin
-      if (out_ch_last) begin
-        out_ch_cnt  <= 0;
-        out_col_cnt <= out_last ? 0 : out_col_cnt + 1;
-      end else begin
-        out_ch_cnt <= out_ch_cnt + 1;
+    end else begin
+      if (cfg_channels_wen) cfg_channels <= cfg_channels_wdata;
+      if (state == OUT_REPLAYING && m_axis_tready) begin
+        if (out_ch_last) begin
+          out_ch_cnt  <= 0;
+          out_col_cnt <= out_last ? 0 : out_col_cnt + 1;
+        end else begin
+          out_ch_cnt <= out_ch_cnt + 1;
+        end
       end
     end
   end

@@ -28,11 +28,16 @@ module sa_wrapper_axi_ctrl_tb;
   logic a_bypass;
   wire  axis_bypass;
   wire  idle;
-  logic [15:0] o_mul_q;
-  logic [ 4:0] o_shift;
-  logic [ 7:0] o_zp_out;
-  logic [ 7:0] o_zp_in;
-  logic [ 6:0] o_out_channels;
+  wire  mul_q_wen;
+  wire  [15:0] mul_q_wdata;
+  wire  shift_wen;
+  wire  [ 4:0] shift_wdata;
+  wire  zp_out_wen;
+  wire  [ 7:0] zp_out_wdata;
+  wire  cfg_channels_wen;
+  wire  [ 6:0] cfg_channels_wdata;
+  wire  repeat_cnt_wen;
+  wire  [ 4:0] repeat_cnt_wdata;
 
   // quantizer signals
   logic [SIZE*8-1:0] q_m_axis_tdata;
@@ -50,9 +55,12 @@ module sa_wrapper_axi_ctrl_tb;
 
   quantizer #(.SIZE(SIZE), .DATA_WIDTH_IN(DWO)) u_quant (
       .clk, .rst_n,
-      .mul_q   (o_mul_q),
-      .shift   (o_shift),
-      .zp_out  (o_zp_out),
+      .mul_q_wen   (mul_q_wen),
+      .mul_q_wdata (mul_q_wdata),
+      .shift_wen   (shift_wen),
+      .shift_wdata (shift_wdata),
+      .zp_out_wen  (zp_out_wen),
+      .zp_out_wdata(zp_out_wdata),
       .s_axis_tdata (m_axis_tdata),
       .s_axis_tvalid(m_axis_tvalid),
       .s_axis_tready(),

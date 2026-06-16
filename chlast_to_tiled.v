@@ -20,8 +20,10 @@ module chlast_to_tiled #(
     output wire                          m_axis_tlast,
 
     input wire                            bypass_i,
-    input wire [$clog2(MAX_CHANNELS+1)-1:0]   cfg_channels_i,
-    input wire [$clog2(MAX_REPLAY_CNT+1)-1:0] repeat_cnt_i
+    input wire                            cfg_channels_wen,
+    input wire [$clog2(MAX_CHANNELS+1)-1:0]   cfg_channels_wdata,
+    input wire                            repeat_cnt_wen,
+    input wire [$clog2(MAX_REPLAY_CNT+1)-1:0] repeat_cnt_wdata
 );
 
   chlast_to_tiled_sv #(
@@ -42,8 +44,10 @@ module chlast_to_tiled #(
       .m_axis_tlast(m_axis_tlast),
 
       .bypass_i(bypass_i),
-      .cfg_channels_i(cfg_channels_i),
-      .repeat_cnt_i(repeat_cnt_i)
+      .cfg_channels_wen  (cfg_channels_wen),
+      .cfg_channels_wdata(cfg_channels_wdata),
+      .repeat_cnt_wen    (repeat_cnt_wen),
+      .repeat_cnt_wdata  (repeat_cnt_wdata)
   );
 
 endmodule
