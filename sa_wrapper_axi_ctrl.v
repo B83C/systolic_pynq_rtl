@@ -13,7 +13,13 @@ module sa_wrapper_axi_ctrl #(
     parameter integer  MAX_ZP_IN       = 127,
     parameter integer  MIN_ZP_IN       = -128,
     parameter unsigned MAX_OUT_CH      = 127,
-    parameter unsigned MAX_REPEAT_CNT  = 31
+    parameter unsigned MAX_REPEAT_CNT  = 31,
+    localparam unsigned O_MUL_Q_W      = $clog2(MAX_MUL_Q      + 1),
+    localparam unsigned O_SHIFT_W      = $clog2(MAX_SHIFT      + 1),
+    localparam unsigned O_ZP_OUT_W     = $clog2(MAX_ZP_OUT - MIN_ZP_OUT + 1),
+    localparam unsigned O_ZP_IN_W      = $clog2(MAX_ZP_IN  - MIN_ZP_IN  + 1),
+    localparam unsigned O_OUT_CH_W     = $clog2(MAX_OUT_CH     + 1),
+    localparam unsigned O_REPEAT_CNT_W = $clog2(MAX_REPEAT_CNT + 1)
 ) (
     input wire clk,
     input wire rst_n,
