@@ -4,7 +4,7 @@
 // Input:  tiled — beat = one channel across OUT_COL spatial positions
 // Output: channel-last — beat = CH_PER_BEAT channels at one spatial position
 
-module tiled_to_chlast_sv #(
+module tiled_to_chlast #(
     parameter DATA_WIDTH   = 8,
     parameter CH_PER_BEAT  = 8,
     parameter MAX_CHANNELS = 64,
@@ -45,7 +45,7 @@ module tiled_to_chlast_sv #(
 );
 
   initial assert((MAX_CHANNELS & (MAX_CHANNELS - 1)) == 0)
-    else $fatal(1, "tiled_to_chlast_sv: MAX_CHANNELS must be a power of 2");
+    else $fatal(1, "tiled_to_chlast: MAX_CHANNELS must be a power of 2");
 
   localparam unsigned CH_PER_BEAT_LOG2 = $clog2(CH_PER_BEAT);
   localparam CH_BLOCKS = MAX_CHANNELS / CH_PER_BEAT;
@@ -57,9 +57,8 @@ module tiled_to_chlast_sv #(
 
   logic [CH_PER_BEAT*DATA_WIDTH-1:0] buffer[2][OUT_COL][CH_BLOCKS];
 
-  // cfg_channels is the live AXI reg; cfg_channels_q is the shadow used by
-  // the FSM.  The shadow updates only when state is OUT_IDLE, so a mid-frame
-  // AXI write cannot glitch ch_blocks_max / out_ch_last / m_axis_tdata.
+  // cfg_channels_q is the shadow used by the FSM.  Latches only when
+  // state == OUT_IDLE so a mid-frame AXI write cannot glitch the output.
   logic [CFG_CH_W-1:0] cfg_channels;
   logic [CFG_CH_W-1:0] cfg_channels_q;
   wire  [CFG_CH_W-1:0] ch_blocks_max = cfg_channels_q >> CH_PER_BEAT_LOG2;
@@ -130,7 +129,6 @@ module tiled_to_chlast_sv #(
       end
 
       // Shadow reg: latch cfg_channels only when state is OUT_IDLE.
-      // Prevents mid-frame glitches to ch_blocks_max and out_ch_last.
       if (state == OUT_IDLE) cfg_channels_q <= cfg_channels;
 
       if (axil_rd_en) begin

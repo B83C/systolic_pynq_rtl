@@ -41,7 +41,6 @@ module sa_wrapper_axi_ctrl #(
     output wire        s_axil_rvalid,
     input  wire        s_axil_rready,
 
-    output wire a_bypass,
     output wire axis_bypass
 );
 
@@ -79,7 +78,6 @@ module sa_wrapper_axi_ctrl #(
       .s_axil_rresp   (s_axil_rresp),
       .s_axil_rvalid  (s_axil_rvalid),
       .s_axil_rready  (s_axil_rready),
-      .a_bypass       (a_bypass),
       .axis_bypass    (axis_bypass)
   );
 
