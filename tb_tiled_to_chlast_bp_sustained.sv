@@ -1,15 +1,14 @@
 `timescale 1ns / 1ps
 
-// Backpressure test for tiled_to_chlast:
+// Sustained backpressure test for tiled_to_chlast:
 //   1. Send 32 input beats with tlast on the last
-//   2. After 5 beats accepted, deassert m_ready for several cycles
-//   3. Re-assert m_ready, expect remaining 27 beats including tlast
-//   4. Verify exact beat count and tlast=1 — no data eaten
+//   2. Throughout the output replay, m_ready is asserted only 1 of every 4
+//      cycles (heavy sustained backpressure)
+//   3. Verify final out_count=32 and tlast_count=1
 
-module tb_tiled_to_chlast_bp;
+module tb_tiled_to_chlast_bp_sustained;
 
   localparam DW = 8, CH = 32, OC = 8;
-  localparam CH_PER_BEAT = 4;
 
   logic clk, rst_n;
   logic [OC*DW-1:0] s_data, m_data;
@@ -60,20 +59,30 @@ module tb_tiled_to_chlast_bp;
     tc_bready = 0;
   endtask
 
-  int out_count, tlast_count, errors, out_count_during_bp;
-  // Track data of accepted beats
-  logic [OC*DW-1:0] captured [64];
+  int out_count, tlast_count, errors;
 
+  // Pattern: m_ready=1 for 1 cycle, then m_ready=0 for 3 cycles (3/4 bp)
   always @(posedge clk) begin
     if (m_valid && m_ready) begin
-      captured[out_count] = m_data;
       out_count++;
       if (m_last) tlast_count++;
+    end
+    // Toggle m_ready every cycle for sustained bp (after the first beat)
+    if (out_count > 0 && (out_count % 1) == 0) begin
+      // After every accepted beat, deny ready for 3 cycles
+      static int deny_cnt = 0;
+      if (deny_cnt > 0) begin
+        m_ready = 0;
+        deny_cnt--;
+      end else begin
+        m_ready = 1;
+        deny_cnt = 3;
+      end
     end
   end
 
   initial begin
-    $dumpfile("waveform.fst"); $dumpvars(0, tb_tiled_to_chlast_bp);
+    $dumpfile("waveform.fst"); $dumpvars(0, tb_tiled_to_chlast_bp_sustained);
     clk = 0; rst_n = 0;
     s_valid = 0; s_last = 0;
     m_ready = 1; tc_awvalid = 0; tc_wvalid = 0; tc_bready = 0;
@@ -82,11 +91,11 @@ module tb_tiled_to_chlast_bp;
     repeat (5) @(posedge clk); rst_n = 1; @(posedge clk);
     tc_axil_write(TC_REG_CH, CH);
 
-    // Send 32 input beats with 8-bit values (low 8 bits of ch*CH+c)
+    // Send 32 input beats
     for (int ch = 0; ch < 32; ch++) begin
       @(negedge clk);
       for (int c = 0; c < OC; c++)
-        s_data[c*DW+:DW] = 8'(ch * CH + c);  // wraps mod 256
+        s_data[c*DW+:DW] = 8'((ch * CH + c) & 8'hFF);
       s_valid = 1;
       s_last  = (ch == 31);
       while (!s_ready) @(posedge clk);
@@ -95,47 +104,24 @@ module tb_tiled_to_chlast_bp;
     end
     s_last = 0;
 
-    // After the input is captured, the converter replays.
-    // Wait for first valid output
-    @(posedge clk);
-    // Accept 5 beats
-    repeat (5) @(posedge clk);
-    // Apply backpressure: deassert m_ready for 20 cycles
-    $display("t=%0t out_count=%0d before bp", $time, out_count);
-    @(negedge clk);
-    m_ready = 0;
-    repeat (20) @(posedge clk);
-    out_count_during_bp = out_count;
-    $display("t=%0t during bp: out_count=%0d (must be > 4, same at end of bp — only 1 in flight in pipeline)", $time, out_count);
-    // During bp, the FSM keeps producing beats into the pipeline reg.  At
-    // most 1 beat is in flight (the pipeline reg).  After ~20 cycles of
-    // back-pressure, out_count should not have advanced much past the
-    // pre-bp count.
-    if (out_count_during_bp >= 10) begin
-      $display("  FAIL: %0d beats drained during 20-cycle bp — bp not held", out_count_during_bp);
-      errors++;
-    end
-    // Re-assert
-    @(negedge clk);
-    m_ready = 1;
-    repeat (200) @(posedge clk);
+    // Wait for output to finish under sustained backpressure
+    repeat (500) @(posedge clk);
 
-    $display("t=%0t out_count=%0d tlast_count=%0d (expect 32, 1)", $time, out_count, tlast_count);
+    $display("t=%0t out_count=%0d tlast_count=%0d (expect 32, 1)",
+             $time, out_count, tlast_count);
     if (out_count != 32) begin
-      $display("  FAIL: out_count != 32"); errors++;
+      $display("  FAIL: out_count != 32 — data was eaten under sustained bp"); errors++;
     end
     if (tlast_count != 1) begin
-      $display("  FAIL: tlast_count != 1"); errors++;
+      $display("  FAIL: tlast_count != 1 — tlast was lost"); errors++;
     end
-    // out_count == 32 and tlast_count == 1 after the backpressure
-    // already proves no data was eaten — see top of initial block.
 
     if (errors == 0) $display("\nALL TESTS PASSED");
     else $display("\n%0d ERRORS", errors);
     $finish;
   end
 
-  initial #20000 begin $display("TIMEOUT"); $finish; end
+  initial #50000 begin $display("TIMEOUT"); $finish; end
   always #1 clk = ~clk;
 
 endmodule
