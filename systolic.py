@@ -2,6 +2,7 @@ from pynq import Overlay, allocate, MMIO
 import numpy as np
 import time
 import os
+import mmap
 import struct
 import subprocess
 
@@ -45,6 +46,7 @@ class SystolicArray:
     # ------------------------------------------------------------------
     #  Register map (AXI-Lite, 4-byte aligned, 6-bit addresses)
     # ------------------------------------------------------------------
+    # SA wrapper AXI-Lite (6-bit address space, 0x00..0x48)
     REG_STATE = 0x00  # RO  [1:0] state (0=IDLE, 1=LOAD_A, 2=LOAD_B, 3=LOAD_C)
     REG_STATUS = 0x04  # RO  [0] b_underflow (clear-on-read)
     REG_C_LOAD = 0x08  # WO  write to trigger C_LOAD
@@ -57,13 +59,20 @@ class SystolicArray:
     REG_C_LOOP_END = 0x24  # RW  C ring end index
     REG_SIZE = 0x28  # RO  array dimension parameter
     REG_RST_INDEX = 0x2C  # WO  soft-reset indices and state
-    REG_MUL_Q = 0x30  # RW  UINT16 quantized multiplier
-    REG_SHIFT = 0x34  # RW  UINT5  right-shift amount
-    REG_ZP_OUT = 0x38  # RW  INT8   output zero-point
-    REG_ZP_IN       = 0x3C  # RW  INT8   input zero-point
-    REG_OUT_CH      = 0x40  # RW  output channels count
+    REG_ZP_IN       = 0x3C  # RW  INT8   input zero-point (SA internal)
     REG_AXIS_BYPASS = 0x44  # RW  axis bypass flag
-    REG_REPEAT_CNT  = 0x48  # RW  chlast replay count
+
+    # Per-module AXI-Lite register offsets (4-bit address space, 0x0..0x8)
+    # Each module has its own slave; CPU writes to each independently.
+    #   quantizer:      REG_Q_MUL_Q, REG_Q_SHIFT, REG_Q_ZP_OUT
+    #   chlast_to_tiled: REG_CT_CFG_CH, REG_CT_REPEAT_CNT
+    #   tiled_to_chlast: REG_TC_CFG_CH
+    REG_Q_MUL_Q       = 0x0  # quantizer: UINT16 multiplier
+    REG_Q_SHIFT       = 0x4  # quantizer: UINT5  right-shift
+    REG_Q_ZP_OUT      = 0x8  # quantizer: INT8   output zero-point
+    REG_CT_CFG_CH     = 0x0  # chlast_to_tiled: cfg_channels
+    REG_CT_REPEAT_CNT = 0x4  # chlast_to_tiled: replay count
+    REG_TC_CFG_CH     = 0x0  # tiled_to_chlast: cfg_channels
 
     # State enum (from defs.svh)
     STATE_IDLE = 0
@@ -80,6 +89,9 @@ class SystolicArray:
         dwo=32,
         a_depth=None,
         c_depth=None,
+        quant_base_addr=None,
+        chlast_base_addr=None,
+        tiled_base_addr=None,
     ):
         self.size = size
         self.dwi = dwi
@@ -88,10 +100,18 @@ class SystolicArray:
         self._output_words_per_beat = self.size * self.dwo // 32
         self._dma_base = ctrl_base_addr + 0x400000  # DMA at 0x40400000
 
+        # Per-module AXI-Lite base addresses (defaults: 16 KB after SA wrapper)
+        self.quant_base_addr      = quant_base_addr      if quant_base_addr      is not None else ctrl_base_addr + 0x10000
+        self.chlast_base_addr     = chlast_base_addr     if chlast_base_addr     is not None else ctrl_base_addr + 0x11000
+        self.tiled_base_addr      = tiled_base_addr      if tiled_base_addr      is not None else ctrl_base_addr + 0x12000
+
         # Open /dev/mem for direct register access (bypass XRT/PYNQ)
         self._mem_fd = os.open("/dev/mem", os.O_RDWR | os.O_SYNC)
         self._sa_map = mmap.mmap(self._mem_fd, 4096, offset=ctrl_base_addr)
         self._dma_map = mmap.mmap(self._mem_fd, 65536, offset=self._dma_base)
+        self._quant_map = mmap.mmap(self._mem_fd, 4096, offset=self.quant_base_addr)
+        self._chlast_map = mmap.mmap(self._mem_fd, 4096, offset=self.chlast_base_addr)
+        self._tiled_map = mmap.mmap(self._mem_fd, 4096, offset=self.tiled_base_addr)
 
         # Parse hwh for DMA channel info (used by program())
         if bitstream is not None:
@@ -100,6 +120,9 @@ class SystolicArray:
             self.ol = None
 
         self.mmio = MMIO(ctrl_base_addr, 0x1000)
+        self.quant_mmio = MMIO(self.quant_base_addr, 0x1000)
+        self.chlast_mmio = MMIO(self.chlast_base_addr, 0x1000)
+        self.tiled_mmio = MMIO(self.tiled_base_addr, 0x1000)
 
         # Probe actual ring depth from hardware register width
         self.a_depth = self._probe_depth(0x1C, a_depth or 8)
@@ -142,18 +165,6 @@ class SystolicArray:
         if not self._dma_wait_idle(0x30):
             raise RuntimeError("DMA S2MM timeout")
         buf.sync()
-
-    def _dma_reg_write(self, offset, value):
-        struct.pack_into("<I", self._dma_map, offset, value)
-
-    def _dma_reg_read(self, offset):
-        return struct.unpack("<I", self._dma_map[offset:offset+4])[0]
-
-    def _sa_reg_write(self, offset, value):
-        struct.pack_into("<I", self._sa_map, offset, value)
-
-    def _sa_reg_read(self, offset):
-        return struct.unpack("<I", self._sa_map[offset:offset+4])[0]
 
     def _probe_depth(self, addr, fallback):
         """Determine ring depth by writing all-ones and reading back."""
@@ -219,14 +230,19 @@ class SystolicArray:
         self.reg_write(self.REG_C_LOOP_END, c_loop_end)
 
     def configure_quant(self, mul_q=1, shift=0, zp_out=0, zp_in=0):
-        self.reg_write(self.REG_MUL_Q,  int(mul_q) & 0xFFFF)
-        self.reg_write(self.REG_SHIFT,  int(shift) & 0x1F)
-        self.reg_write(self.REG_ZP_OUT, int(zp_out) & 0xFF)
+        # mul_q, shift, zp_out live in the quantizer's own AXI-Lite slave.
+        # zp_in stays in the SA wrapper (internal B-zp subtract).
+        self.quant_mmio.write(self.REG_Q_MUL_Q,  int(mul_q)  & 0xFFFF)
+        self.quant_mmio.write(self.REG_Q_SHIFT,  int(shift)  & 0x1F)
+        self.quant_mmio.write(self.REG_Q_ZP_OUT, int(zp_out) & 0xFF)
         self.reg_write(self.REG_ZP_IN,  int(zp_in) & 0xFF)
 
     def configure_channels(self, out_ch=4, repeat_cnt=4):
-        self.reg_write(self.REG_OUT_CH,     int(out_ch) & 0x7F)
-        self.reg_write(self.REG_REPEAT_CNT, int(repeat_cnt) & 0x1F)
+        # cfg_channels -> chlast_to_tiled AND tiled_to_chlast
+        # repeat_cnt    -> chlast_to_tiled only
+        self.chlast_mmio.write(self.REG_CT_CFG_CH,     int(out_ch)     & 0x7F)
+        self.chlast_mmio.write(self.REG_CT_REPEAT_CNT, int(repeat_cnt) & 0x1F)
+        self.tiled_mmio.write(self.REG_TC_CFG_CH,      int(out_ch)     & 0x7F)
 
     # ------------------------------------------------------------------
     #  Data packing — all input via single MM2S channel
