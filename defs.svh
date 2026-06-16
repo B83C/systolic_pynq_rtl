@@ -20,12 +20,7 @@ localparam REG_C_LOOP_START = 6'h20;
 localparam REG_C_LOOP_END = 6'h24;
 localparam REG_SIZE = 6'h28;
 localparam REG_RST_INDEX = 6'h2C;
-localparam REG_MUL_Q = 6'h30;
-localparam REG_SHIFT = 6'h34;
-localparam REG_ZP_OUT = 6'h38;
 localparam REG_ZP_IN = 6'h3C;
-localparam REG_OUT_CH = 7'h40;
-localparam REG_AXIS_BYPASS = 7'h44;
-localparam REG_REPEAT_CNT = 7'h48;
+
 
 `endif

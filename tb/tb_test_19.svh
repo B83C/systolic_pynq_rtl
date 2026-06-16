@@ -10,9 +10,9 @@ task test_19_quantizer_identity();
     q_out_count = 0;
 
     axil_write(REG_A_LOOP_START, 0);
-    axil_write(REG_MUL_Q, 1);
-    axil_write(REG_SHIFT, 0);
-    axil_write(REG_ZP_OUT, 0);
+    qaxil_write(REG_Q_MUL_Q,  1);
+    qaxil_write(REG_Q_SHIFT,  0);
+    qaxil_write(REG_Q_ZP_OUT, 0);
     load_A();
 
     stream_mat(B1, 1);

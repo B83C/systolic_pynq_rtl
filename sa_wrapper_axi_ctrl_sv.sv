@@ -42,9 +42,8 @@ module sa_wrapper_axi_ctrl_sv #(
     output reg  [          31:0] s_axil_rdata,
     output wire [           1:0] s_axil_rresp,
     output reg                   s_axil_rvalid,
-    input  wire                  s_axil_rready,
+    input  wire                  s_axil_rready
 
-    output wire axis_bypass
 );
 
   logic new_batch;
@@ -116,7 +115,6 @@ module sa_wrapper_axi_ctrl_sv #(
   reg c_load_pending;
   reg signed [ZP_IN_W-1:0] zp_in;
   reg soft_rst;
-  reg axis_bypass_r;
   reg [A_RING_ADDR_W-1:0] a_loop_start;
   reg [A_RING_ADDR_W-1:0] a_loop_end;
   reg [C_RING_ADDR_W-1:0] c_loop_start;
@@ -196,7 +194,6 @@ module sa_wrapper_axi_ctrl_sv #(
       soft_rst       <= 0;
       a_load_pending <= 0;
       c_load_pending <= 0;
-      axis_bypass_r  <= 0;
       zp_in          <= 0;
       s_axil_bvalid  <= 0;
       s_axil_rvalid  <= 0;
@@ -214,7 +211,6 @@ module sa_wrapper_axi_ctrl_sv #(
           REG_C_LOOP_START: c_loop_start <= s_axil_wdata[C_RING_ADDR_W-1:0];
           REG_C_LOOP_END:   c_loop_end <= s_axil_wdata[C_RING_ADDR_W-1:0];
           REG_RST_INDEX:    ;  // handled below
-          REG_AXIS_BYPASS:  axis_bypass_r <= s_axil_wdata[0];
           default:          ;
         endcase
         s_axil_bvalid <= 1;
@@ -242,7 +238,6 @@ module sa_wrapper_axi_ctrl_sv #(
           REG_C_LOOP_END:   s_axil_rdata <= {{32 - C_RING_ADDR_W{1'h0}}, c_loop_end};
           REG_SIZE:         s_axil_rdata <= SIZE;
           REG_ZP_IN:        s_axil_rdata <= {{32 - ZP_IN_W{1'b0}}, zp_in};
-          REG_AXIS_BYPASS:  s_axil_rdata <= {31'h0, axis_bypass_r};
           default:          s_axil_rdata <= 32'h0;
         endcase
         s_axil_rvalid <= 1;
@@ -472,7 +467,8 @@ module sa_wrapper_axi_ctrl_sv #(
     end
   end
 
-  assign axis_bypass = axis_bypass_r;
+  // (axis_bypass removed — bypass is per-converter, controlled via each
+  //  module's own REG_BYPASS AXI-Lite register.)
 
   wire [AXI_OUT_WIDTH-1:0] m_axis_tdata_raw;
   generate

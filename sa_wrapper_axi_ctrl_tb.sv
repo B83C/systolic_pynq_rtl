@@ -25,9 +25,6 @@ module sa_wrapper_axi_ctrl_tb;
   logic [31:0] s_axil_rdata;
   logic [ 1:0] s_axil_rresp;
   logic s_axil_rvalid, s_axil_rready;
-  logic a_bypass;
-  wire  axis_bypass;
-  wire  idle;
 
   // AXI-Lite signals for the quantizer (separate slave)
   logic        q_awvalid;
@@ -84,7 +81,19 @@ module sa_wrapper_axi_ctrl_tb;
       .DATA_WIDTH_IN(DWI),
       .DATA_WIDTH_OUT(DWO)
   ) dut (
-      .*
+      .clk(clk), .rst_n(rst_n),
+      .s_axis_B_tdata(s_axis_B_tdata), .s_axis_B_tvalid(s_axis_B_tvalid),
+      .s_axis_B_tready(s_axis_B_tready), .s_axis_B_tlast(s_axis_B_tlast),
+      .m_axis_tdata(m_axis_tdata), .m_axis_tvalid(m_axis_tvalid),
+      .m_axis_tready(m_axis_tready), .m_axis_tlast(m_axis_tlast),
+      .s_axil_awvalid(s_axil_awvalid), .s_axil_awready(s_axil_awready),
+      .s_axil_awaddr(s_axil_awaddr), .s_axil_wdata(s_axil_wdata),
+      .s_axil_wvalid(s_axil_wvalid), .s_axil_wready(s_axil_wready),
+      .s_axil_bresp(s_axil_bresp), .s_axil_bvalid(s_axil_bvalid),
+      .s_axil_bready(s_axil_bready), .s_axil_arvalid(s_axil_arvalid),
+      .s_axil_arready(s_axil_arready), .s_axil_araddr(s_axil_araddr),
+      .s_axil_rdata(s_axil_rdata), .s_axil_rresp(s_axil_rresp),
+      .s_axil_rvalid(s_axil_rvalid), .s_axil_rready(s_axil_rready)
   );
 
   quantizer #(.SIZE(SIZE), .DATA_WIDTH_IN(DWO)) u_quant (
