@@ -67,7 +67,7 @@ module chlast_to_tiled_sv #(
   localparam REG_CT_BYPASS  = 4'h8;
   logic bypass_r;
 
-  (* ram_style = "block" *) logic [CH_PER_BEAT*DATA_WIDTH-1:0] buffer[2][OUT_COL][CH_BLOCKS];
+  (* ram_style = "block" *) logic [CH_PER_BEAT*DATA_WIDTH-1:0] buffer[2 * OUT_COL * CH_BLOCKS];
 
   logic [CFG_CH_W-1:0]     cfg_channels;
   logic [CFG_CH_W-1:0]     cfg_channels_q;
@@ -211,7 +211,7 @@ module chlast_to_tiled_sv #(
       // BUF_IDX_W bits.  inner is SP_BITS bits, so we extend to the
       // right width to silence WIDTHTRUNC.
       assign output_row[i*DATA_WIDTH+:DATA_WIDTH] =
-        buffer[out_buf_sel][i][ch_block][BUF_IDX_W'(inner * DATA_WIDTH) +: DATA_WIDTH ];
+        buffer[(out_buf_sel * OUT_COL + i) * CH_BLOCKS + ch_block][BUF_IDX_W'(inner * DATA_WIDTH) +: DATA_WIDTH ];
     end
   endgenerate
 
@@ -276,9 +276,9 @@ module chlast_to_tiled_sv #(
 
       if (!bypass_r && (accept_data || tlast_seen)) begin
         if (tlast_seen) begin
-          buffer[input_sel][col_cntr][row_cntr] <= 0;
+          buffer[(input_sel * OUT_COL + col_cntr) * CH_BLOCKS + row_cntr] <= 0;
         end else begin
-          buffer[input_sel][col_cntr][row_cntr] <= s_axis_tdata;
+          buffer[(input_sel * OUT_COL + col_cntr) * CH_BLOCKS + row_cntr] <= s_axis_tdata;
         end
 
         if (s_axis_tlast && !tlast_seen && !input_last) begin
