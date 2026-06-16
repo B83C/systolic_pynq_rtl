@@ -8,9 +8,23 @@ module sa_wrapper_axi_ctrl_sv #(
     parameter  unsigned SIZE           = 4,
     parameter  unsigned DATA_WIDTH_IN  = 8,
     parameter  unsigned DATA_WIDTH_OUT = 32,
+    parameter  unsigned MAX_MUL_Q      = 65535,
+    parameter  unsigned MAX_SHIFT      = 31,
+    parameter  integer  MAX_ZP_OUT     = 127,
+    parameter  integer  MIN_ZP_OUT     = -128,
+    parameter  integer  MAX_ZP_IN      = 127,
+    parameter  integer  MIN_ZP_IN      = -128,
+    parameter  unsigned MAX_OUT_CH     = 127,
+    parameter  unsigned MAX_REPEAT_CNT = 31,
+    localparam unsigned O_MUL_Q_W      = $clog2(MAX_MUL_Q + 1),
+    localparam unsigned O_SHIFT_W      = $clog2(MAX_SHIFT + 1),
+    localparam unsigned O_ZP_OUT_W     = $clog2(MAX_ZP_OUT - MIN_ZP_OUT + 1),
+    localparam unsigned O_ZP_IN_W      = $clog2(MAX_ZP_IN - MIN_ZP_IN + 1),
+    localparam unsigned O_OUT_CH_W     = $clog2(MAX_OUT_CH + 1),
+    localparam unsigned O_REPEAT_CNT_W = $clog2(MAX_REPEAT_CNT + 1),
     localparam unsigned AXI_IN_WIDTH   = SIZE * DATA_WIDTH_IN,
     localparam unsigned AXI_OUT_WIDTH  = SIZE * DATA_WIDTH_OUT,
-    localparam unsigned AXI_ADDR_W     = 6
+    localparam unsigned AXI_ADDR_W     = 7
 ) (
     input wire clk,
     input wire rst_n,
@@ -45,13 +59,13 @@ module sa_wrapper_axi_ctrl_sv #(
 
     output wire a_bypass,
     output wire axis_bypass,
-    output wire idle,
-    output reg [15:0] o_mul_q,
-    output reg [4:0] o_shift,
-    output reg [7:0] o_zp_out,
-    output reg [7:0] o_zp_in,
-    output reg [6:0] o_out_channels,
-    output reg [4:0] o_repeat_cnt
+
+    output reg [     O_MUL_Q_W-1:0] o_mul_q,
+    output reg [     O_SHIFT_W-1:0] o_shift,
+    output reg [    O_ZP_OUT_W-1:0] o_zp_out,
+    output reg [     O_ZP_IN_W-1:0] o_zp_in,
+    output reg [    O_OUT_CH_W-1:0] o_out_channels,
+    output reg [O_REPEAT_CNT_W-1:0] o_repeat_cnt
 );
 
   logic new_batch;
@@ -63,21 +77,25 @@ module sa_wrapper_axi_ctrl_sv #(
   localparam unsigned A_RING_ADDR_W = $clog2(A_RING_DEPTH);
   localparam unsigned C_RING_ADDR_W = $clog2(C_DEPTH * SIZE);
 
-  logic last_row;
   reg [SIZE-1:0] current_row, output_idx_oh;
+
+  wire  input_pointer_at_first_row = current_row == 1;
+  wire  input_pointer_at_last_row = current_row[SIZE-1];
+
   logic output_going_on;
   logic delayed_b_consume;
 
   wire  can_output = !m_axis_tvalid || m_axis_tready;
 
-  wire  operate = s_axis_B_tvalid && can_output;
-  wire  b_consume = operate && (state == LOAD_B);
-  wire  a_consume = operate && (state == LOAD_A);
-  wire  c_consume = operate && (state == LOAD_C);
-
   wire  output_stalled = output_going_on && !m_axis_tready;
 
-  assign s_axis_B_tready = can_output && state != IDLE && !output_stalled;
+  assign s_axis_B_tready = can_output && !output_stalled;
+
+  wire operate = s_axis_B_tvalid && s_axis_B_tready;
+  wire b_consume = operate && (state == LOAD_B);
+  wire a_consume = operate && (state == LOAD_A);
+  wire c_consume = operate && (state == LOAD_C);
+
 
   logic [DATA_WIDTH_IN-1:0] a_ring_internal[SIZE][SIZE];
   logic [DATA_WIDTH_IN-1:0] a_row[SIZE];
@@ -117,16 +135,14 @@ module sa_wrapper_axi_ctrl_sv #(
   wire [7:0] current_acc_count;
   reg a_load_pending;
   reg c_load_pending;
-  reg signed [7:0] zp_in;
-  reg [15:0] mul_q;
-  reg [4:0] shift;
-  reg signed [7:0] zp_out;
-  reg [6:0] out_channels;
-  reg [4:0] repeat_cnt;
+  reg signed [O_ZP_IN_W-1:0] zp_in;
+  reg [O_MUL_Q_W-1:0] mul_q;
+  reg [O_SHIFT_W-1:0] shift;
+  reg signed [O_ZP_OUT_W-1:0] zp_out;
+  reg [O_OUT_CH_W-1:0] out_channels;
+  reg [O_REPEAT_CNT_W-1:0] repeat_cnt;
   reg soft_rst;
   reg axis_bypass_r;
-  reg a_loop_active;
-  reg c_loop_active;
   reg [A_RING_ADDR_W-1:0] a_loop_start;
   reg [A_RING_ADDR_W-1:0] a_loop_end;
   reg [C_RING_ADDR_W-1:0] c_loop_start;
@@ -135,11 +151,9 @@ module sa_wrapper_axi_ctrl_sv #(
   // We advance when new input comes in, or drain the output when master is ready and multplication is still going on and we do not need to feed back data
   wire advance = b_consume | (output_going_on && m_axis_tready && new_batch);
 
-  assign idle = state == IDLE;
+  // assign idle = state == IDLE;
 
-  wire axil_wr_en = s_axil_awvalid && s_axil_wvalid && !s_axil_bvalid
-                     && (state == IDLE || state == LOAD_B
-                         || state == LOAD_A || state == LOAD_C);
+  wire axil_wr_en = s_axil_awvalid && s_axil_wvalid && !s_axil_bvalid;
   wire axil_rd_en = s_axil_arvalid && !s_axil_rvalid;
 
   assign s_axil_awready = axil_wr_en;
@@ -150,36 +164,29 @@ module sa_wrapper_axi_ctrl_sv #(
 
   always_comb begin
     unique case (state)
-      IDLE: begin
-        if (c_load_pending) begin
-          state_nxt = LOAD_C;
-        end else if (a_load_pending) begin
-          state_nxt = LOAD_A;
-        end else begin
-          state_nxt = LOAD_B;
-        end
-      end
       LOAD_A: begin
-        if ((a_rd_ptr == a_loop_end && a_loop_active) || (state == LOAD_A && s_axis_B_tlast)) begin
-          state_nxt = IDLE;
+        if ((a_rd_ptr == a_loop_end || s_axis_B_tlast) && operate) begin
+          state_nxt = LOAD_B;
         end else begin
           state_nxt = LOAD_A;
         end
       end
       LOAD_C: begin
-        if ((c_rd_ptr == c_loop_end && c_loop_active) || (state == LOAD_C && s_axis_B_tlast)) begin
-          state_nxt = IDLE;
+        if ((c_rd_ptr == c_loop_end || s_axis_B_tlast) && operate) begin
+          state_nxt = LOAD_B;
         end else begin
           state_nxt = LOAD_C;
         end
       end
 
       LOAD_B: begin
-        if (s_axis_B_tlast) begin
-          state_nxt = IDLE;
-        end else if (c_load_pending && !operate) begin
+        if (c_load_pending &&
+          ((input_pointer_at_first_row && !operate)
+          || (input_pointer_at_last_row && operate))) begin
           state_nxt = LOAD_C;
-        end else if (a_load_pending && !operate) begin
+        end else if (a_load_pending &&
+          ((input_pointer_at_first_row && !operate)
+          || (input_pointer_at_last_row && operate))) begin
           state_nxt = LOAD_A;
         end else begin
           state_nxt = LOAD_B;
@@ -190,67 +197,61 @@ module sa_wrapper_axi_ctrl_sv #(
 
   always @(posedge clk, negedge rst_n) begin
     if (!rst_n) begin
-      state <= IDLE;
-      a_loop_active <= 0;
-      c_loop_active <= 0;
+      state <= LOAD_B;
     end else if (soft_rst) begin
-      state <= IDLE;
-      a_loop_active <= 0;
-      c_loop_active <= 0;
+      state <= LOAD_B;
     end else begin
       state <= state_nxt;
-      if (state_nxt != state) begin
-        a_loop_active <= 0;
-        c_loop_active <= 0;
-      end else begin
-        if (a_consume) a_loop_active <= 1;
-        if (c_consume) c_loop_active <= 1;
-      end
+      // if (state_nxt != state) begin
+      //   a_loop_active <= 0;
+      //   c_loop_active <= 0;
+      // end else begin
+      // end
     end
   end
 
 
   always @(posedge clk, negedge rst_n) begin
     if (!rst_n) begin
-      a_loop_start  <= 0;
-      a_loop_end    <= SIZE - 1;
-      c_loop_start  <= 0;
-      c_loop_end    <= (C_DEPTH * SIZE) - 1;
-      acc_cnt       <= 0;
-      b_underflow   <= 0;
-      soft_rst      <= 0;
+      a_loop_start   <= 0;
+      a_loop_end     <= SIZE - 1;
+      c_loop_start   <= 0;
+      c_loop_end     <= (C_DEPTH * SIZE) - 1;
+      acc_cnt        <= 0;
+      b_underflow    <= 0;
+      soft_rst       <= 0;
       a_load_pending <= 0;
       c_load_pending <= 0;
-      axis_bypass_r <= 0;
-      zp_in         <= 0;
-      mul_q         <= 0;
-      shift         <= 0;
-      zp_out        <= 0;
-      out_channels  <= SIZE;
-      repeat_cnt    <= 1;
-      s_axil_bvalid <= 0;
-      s_axil_rvalid <= 0;
-      s_axil_rdata  <= 0;
+      axis_bypass_r  <= 0;
+      zp_in          <= 0;
+      mul_q          <= 0;
+      shift          <= 0;
+      zp_out         <= 0;
+      out_channels   <= SIZE;
+      repeat_cnt     <= 1;
+      s_axil_bvalid  <= 0;
+      s_axil_rvalid  <= 0;
+      s_axil_rdata   <= 0;
     end else begin
 
       if (axil_wr_en) begin
         case (s_axil_awaddr)
-          REG_FB_CNT: acc_cnt <= s_axil_wdata[7:0];
-          REG_C_LOAD: c_load_pending <= 1;
-          REG_A_LOAD: a_load_pending <= 1;
+          REG_FB_CNT:       acc_cnt <= s_axil_wdata[7:0];
+          REG_C_LOAD:       c_load_pending <= 1;
+          REG_A_LOAD:       a_load_pending <= 1;
           REG_A_LOOP_START: a_loop_start <= s_axil_wdata[A_RING_ADDR_W-1:0];
-          REG_ZP_IN:    zp_in <= s_axil_wdata[7:0];
-          REG_MUL_Q:    mul_q <= s_axil_wdata[15:0];
-          REG_SHIFT:    shift <= s_axil_wdata[4:0];
-          REG_ZP_OUT:   zp_out <= s_axil_wdata[7:0];
-          REG_A_LOOP_END: a_loop_end <= s_axil_wdata[A_RING_ADDR_W-1:0];
+          REG_ZP_IN:        zp_in <= s_axil_wdata[O_ZP_IN_W-1:0];
+          REG_MUL_Q:        mul_q <= s_axil_wdata[O_MUL_Q_W-1:0];
+          REG_SHIFT:        shift <= s_axil_wdata[O_SHIFT_W-1:0];
+          REG_ZP_OUT:       zp_out <= s_axil_wdata[O_ZP_OUT_W-1:0];
+          REG_A_LOOP_END:   a_loop_end <= s_axil_wdata[A_RING_ADDR_W-1:0];
           REG_C_LOOP_START: c_loop_start <= s_axil_wdata[C_RING_ADDR_W-1:0];
-          REG_C_LOOP_END: c_loop_end <= s_axil_wdata[C_RING_ADDR_W-1:0];
-           REG_RST_INDEX: ;  // handled below
-           REG_AXIS_BYPASS: axis_bypass_r <= s_axil_wdata[0];
-           REG_OUT_CH:      out_channels <= s_axil_wdata[6:0];
-           REG_REPEAT_CNT:   repeat_cnt <= s_axil_wdata[4:0];
-           default: ;
+          REG_C_LOOP_END:   c_loop_end <= s_axil_wdata[C_RING_ADDR_W-1:0];
+          REG_RST_INDEX:    ;  // handled below
+          REG_AXIS_BYPASS:  axis_bypass_r <= s_axil_wdata[0];
+          REG_OUT_CH:       out_channels <= s_axil_wdata[O_OUT_CH_W-1:0];
+          REG_REPEAT_CNT:   repeat_cnt <= s_axil_wdata[O_REPEAT_CNT_W-1:0];
+          default:          ;
         endcase
         s_axil_bvalid <= 1;
       end else if (s_axil_bready) begin
@@ -276,13 +277,13 @@ module sa_wrapper_axi_ctrl_sv #(
           REG_C_LOOP_START: s_axil_rdata <= {{32 - C_RING_ADDR_W{1'h0}}, c_loop_start};
           REG_C_LOOP_END:   s_axil_rdata <= {{32 - C_RING_ADDR_W{1'h0}}, c_loop_end};
           REG_SIZE:         s_axil_rdata <= SIZE;
-          REG_MUL_Q:        s_axil_rdata <= {16'h0, mul_q};
-          REG_SHIFT:        s_axil_rdata <= {27'h0, shift};
-          REG_ZP_OUT:       s_axil_rdata <= {24'h0, zp_out};
-          REG_ZP_IN:        s_axil_rdata <= {24'h0, zp_in};
+          REG_MUL_Q:        s_axil_rdata <= {{32 - O_MUL_Q_W{1'b0}}, mul_q};
+          REG_SHIFT:        s_axil_rdata <= {{32 - O_SHIFT_W{1'b0}}, shift};
+          REG_ZP_OUT:       s_axil_rdata <= {{32 - O_ZP_OUT_W{1'b0}}, zp_out};
+          REG_ZP_IN:        s_axil_rdata <= {{32 - O_ZP_IN_W{1'b0}}, zp_in};
           REG_AXIS_BYPASS:  s_axil_rdata <= {31'h0, axis_bypass_r};
-          REG_OUT_CH:       s_axil_rdata <= {25'h0, out_channels};
-          REG_REPEAT_CNT:   s_axil_rdata <= {27'h0, repeat_cnt};
+          REG_OUT_CH:       s_axil_rdata <= {{32 - O_OUT_CH_W{1'b0}}, out_channels};
+          REG_REPEAT_CNT:   s_axil_rdata <= {{32 - O_REPEAT_CNT_W{1'b0}}, repeat_cnt};
           default:          s_axil_rdata <= 32'h0;
         endcase
         s_axil_rvalid <= 1;
@@ -337,9 +338,10 @@ module sa_wrapper_axi_ctrl_sv #(
         end
       end
 
-      if (state_nxt == IDLE && !output_going_on) begin
-        current_row <= 1;
-      end
+      // TODO confirm
+      // if (state_nxt == IDLE && !output_going_on) begin
+      //   current_row <= 1;
+      // end
       if (state_nxt == LOAD_A || state_nxt == LOAD_C) begin
         current_row <= 1;
       end
@@ -351,8 +353,6 @@ module sa_wrapper_axi_ctrl_sv #(
       end
     end
   end
-
-  assign last_row = current_row[SIZE-1];
 
   genvar i;
   generate
@@ -432,7 +432,7 @@ module sa_wrapper_axi_ctrl_sv #(
       .MAX(256)
   ) c_cntr (
       .clk(clk),
-      .en(last_row && b_consume),
+      .en(input_pointer_at_last_row && b_consume),
       .rst_n(rst_n && !soft_rst),
       .dyn_max(acc_cnt),
       .zero(new_batch),
@@ -513,12 +513,12 @@ module sa_wrapper_axi_ctrl_sv #(
     end
   end
 
-  assign o_mul_q  = mul_q;
-  assign o_shift  = shift;
+  assign o_mul_q = mul_q;
+  assign o_shift = shift;
   assign o_zp_out = zp_out;
-  assign o_zp_in  = zp_in;
+  assign o_zp_in = zp_in;
   assign o_out_channels = out_channels;
-  assign o_repeat_cnt   = repeat_cnt;
+  assign o_repeat_cnt = repeat_cnt;
   assign axis_bypass = axis_bypass_r;
 
   wire [AXI_OUT_WIDTH-1:0] m_axis_tdata_raw;

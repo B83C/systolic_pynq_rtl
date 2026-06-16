@@ -4,14 +4,18 @@ module quantizer_wrapper #(
     parameter unsigned SIZE           = 4,
     parameter unsigned DATA_WIDTH_IN  = 32,
     parameter unsigned DATA_WIDTH_OUT = 8,
-    parameter unsigned ACCUM_WIDTH    = 32
+    parameter unsigned ACCUM_WIDTH    = 32,
+    parameter unsigned MAX_MUL_Q       = 65535,
+    parameter unsigned MAX_SHIFT       = 31,
+    parameter integer  MAX_ZP_OUT      = 127,
+    parameter integer  MIN_ZP_OUT      = -128
 ) (
     input  wire         clk,
     input  wire         rst_n,
 
-    input  wire [15:0]  mul_q,
-    input  wire [ 4:0]  shift,
-    input  wire [ 7:0]  zp_out,
+    input  wire [$clog2(MAX_MUL_Q+1)-1:0]    mul_q,
+    input  wire [$clog2(MAX_SHIFT+1)-1:0]    shift,
+    input  wire [$clog2(MAX_ZP_OUT-MIN_ZP_OUT+1)-1:0] zp_out,
 
     input  wire [SIZE*DATA_WIDTH_IN -1:0] s_axis_tdata,
     input  wire                           s_axis_tvalid,
@@ -28,7 +32,11 @@ module quantizer_wrapper #(
         .SIZE         (SIZE),
         .DATA_WIDTH_IN(DATA_WIDTH_IN),
         .DATA_WIDTH_OUT(DATA_WIDTH_OUT),
-        .ACCUM_WIDTH  (ACCUM_WIDTH)
+        .ACCUM_WIDTH  (ACCUM_WIDTH),
+        .MAX_MUL_Q(MAX_MUL_Q),
+        .MAX_SHIFT(MAX_SHIFT),
+        .MAX_ZP_OUT(MAX_ZP_OUT),
+        .MIN_ZP_OUT(MIN_ZP_OUT)
     ) u_quant (
         .clk            (clk),
         .rst_n          (rst_n),

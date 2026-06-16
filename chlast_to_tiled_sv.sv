@@ -5,11 +5,11 @@
 // Output: spatial-interleaved (one channel across 8 spatial positions per beat)
 
 module chlast_to_tiled_sv #(
-    parameter DATA_WIDTH  = 8,
-    parameter CH_PER_BEAT = 8,
-    parameter CHANNELS    = 64,
-    parameter OUT_COL    = 8,
-    parameter MAX_REPLAY_CNT    = 16
+    parameter DATA_WIDTH   = 8,
+    parameter CH_PER_BEAT  = 8,
+    parameter MAX_CHANNELS = 64,
+    parameter OUT_COL      = 8,
+    parameter MAX_REPLAY_CNT = 16
 ) (
     input  logic                              clk,
     rst_n,
@@ -24,22 +24,24 @@ module chlast_to_tiled_sv #(
     output logic                          m_axis_tlast,
 
     input logic                            bypass_i,
-    input logic [   $bits(CHANNELS) - 1:0] cfg_channels_i,
-    input logic [$clog2(MAX_REPLAY_CNT):0] repeat_cnt_i
+    input logic [$clog2(MAX_CHANNELS+1)-1:0]   cfg_channels_i,
+    input logic [$clog2(MAX_REPLAY_CNT+1)-1:0] repeat_cnt_i
 );
 
-  localparam CH_BLOCKS = CHANNELS / CH_PER_BEAT;
+  localparam CH_BLOCKS = MAX_CHANNELS / CH_PER_BEAT;
   localparam CHBLK_BITS = (CH_BLOCKS > 1) ? $clog2(CH_BLOCKS) : 1;
   localparam SP_BITS = (CH_PER_BEAT > 2) ? $clog2(CH_PER_BEAT) : 1;
-  // localparam MAX_ROWS = (MAX_SPATIAL / CH_PER_BEAT) * CHANNELS;
+  // localparam MAX_ROWS = (MAX_SPATIAL / CH_PER_BEAT) * MAX_CHANNELS;
   localparam ADDR_BITS = $clog2(CH_BLOCKS);
   // localparam CNT_BITS = (MAX_ROWS > 1) ? $clog2(MAX_ROWS + 1) : 1;
   localparam OUT_WIDTH = DATA_WIDTH * OUT_COL;
   localparam OUT_COL_BITS = $clog2(OUT_COL);
+  localparam CFG_CH_W     = $clog2(MAX_CHANNELS + 1);
+  localparam REPLAY_CNT_W = $clog2(MAX_REPLAY_CNT + 1);
 
   logic [CH_PER_BEAT*DATA_WIDTH-1:0] buffer[2][OUT_COL][CH_BLOCKS];
 
-  wire [$bits(CHANNELS) - 1:0] ch_blocks_max = cfg_channels_i / CH_PER_BEAT;
+  wire [CFG_CH_W-1:0] ch_blocks_max = cfg_channels_i / CH_PER_BEAT;
 
   typedef enum {
     OUT_REPLAYING,
@@ -48,8 +50,8 @@ module chlast_to_tiled_sv #(
 
   output_state_t out_state, out_state_nxt;
   logic out_buf_sel;
-  logic [$clog2(CHANNELS) - 1:0] out_buf_cntr;
-  logic [$bits(repeat_cnt_i) - 1:0] out_replay_cnt;
+  logic [CFG_CH_W-1:0] out_buf_cntr;
+  logic [REPLAY_CNT_W-1:0] out_replay_cnt;
 
   logic pending, pending_has_tlast;
   wire  last_replay = out_replay_cnt == 0;
@@ -77,8 +79,10 @@ module chlast_to_tiled_sv #(
     endcase
   end
 
-  always @(posedge clk, negedge rst_n) begin
+   always @(posedge clk, negedge rst_n) begin
     if (!rst_n) begin
+      out_state <= OUT_IDLE;
+    end else if (bypass_i) begin
       out_state <= OUT_IDLE;
     end else begin
       out_state <= out_state_nxt;
@@ -87,6 +91,9 @@ module chlast_to_tiled_sv #(
 
   always @(posedge clk, negedge rst_n) begin
     if (!rst_n) begin
+      out_buf_cntr   <= 0;
+      out_replay_cnt <= repeat_cnt_i - 1;
+    end else if (bypass_i) begin
       out_buf_cntr   <= 0;
       out_replay_cnt <= repeat_cnt_i - 1;
     end else if (out_state == OUT_REPLAYING && m_axis_tready) begin
@@ -126,8 +133,8 @@ out_buf_cntr
   assign m_axis_tlast  = bypass_i ? s_axis_tlast : out_last && output_has_tlast;
 
 
-  assign s_axis_tready = bypass_i ? m_axis_tready : has_free;
   wire has_free = (out_state == OUT_IDLE || !pending) && !tlast_seen;
+  assign s_axis_tready = bypass_i ? m_axis_tready : has_free;
   wire accept_data = !bypass_i && s_axis_tvalid && s_axis_tready;
 
   logic [OUT_COL_BITS - 1:0] col_cntr;
@@ -148,7 +155,7 @@ out_buf_cntr
       pending <= 0;
       tlast_seen <= 0;
       pending_has_tlast <= 0;
-    end else if (accept_data || tlast_seen) begin
+    end else if (!bypass_i && (accept_data || tlast_seen)) begin
       if (tlast_seen) begin
         buffer[input_sel][col_cntr][row_cntr] <= 0;
       end else begin

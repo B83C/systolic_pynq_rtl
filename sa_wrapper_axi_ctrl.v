@@ -5,7 +5,15 @@ module sa_wrapper_axi_ctrl #(
     parameter unsigned ACCUM_WIDTH    = 32,
     parameter unsigned SIZE           = 4,
     parameter unsigned DATA_WIDTH_IN  = 8,
-    parameter unsigned DATA_WIDTH_OUT = 8
+    parameter unsigned DATA_WIDTH_OUT = 8,
+    parameter unsigned MAX_MUL_Q       = 65535,
+    parameter unsigned MAX_SHIFT       = 31,
+    parameter integer  MAX_ZP_OUT      = 127,
+    parameter integer  MIN_ZP_OUT      = -128,
+    parameter integer  MAX_ZP_IN       = 127,
+    parameter integer  MIN_ZP_IN       = -128,
+    parameter unsigned MAX_OUT_CH      = 127,
+    parameter unsigned MAX_REPEAT_CNT  = 31
 ) (
     input wire clk,
     input wire rst_n,
@@ -25,7 +33,7 @@ module sa_wrapper_axi_ctrl #(
     // AXI4-Lite: control / status
     input  wire        s_axil_awvalid,
     output wire        s_axil_awready,
-    input  wire [ 5:0] s_axil_awaddr,
+    input  wire [ 6:0] s_axil_awaddr,
     input  wire [31:0] s_axil_wdata,
     input  wire        s_axil_wvalid,
     output wire        s_axil_wready,
@@ -35,7 +43,7 @@ module sa_wrapper_axi_ctrl #(
 
     input  wire        s_axil_arvalid,
     output wire        s_axil_arready,
-    input  wire [ 5:0] s_axil_araddr,
+    input  wire [ 6:0] s_axil_araddr,
     output wire [31:0] s_axil_rdata,
     output wire [ 1:0] s_axil_rresp,
     output wire        s_axil_rvalid,
@@ -43,14 +51,14 @@ module sa_wrapper_axi_ctrl #(
 
     output wire a_bypass,
     output wire axis_bypass,
-    output wire idle,
+    // output wire idle,
 
-    output wire [15:0] o_mul_q,
-    output wire [ 4:0] o_shift,
-    output wire [ 7:0] o_zp_out,
-    output wire [ 7:0] o_zp_in,
-    output wire [ 6:0] o_out_channels,
-    output wire [ 4:0] o_repeat_cnt
+    output wire [O_MUL_Q_W-1:0]      o_mul_q,
+    output wire [O_SHIFT_W-1:0]      o_shift,
+    output wire [O_ZP_OUT_W-1:0]     o_zp_out,
+    output wire [O_ZP_IN_W-1:0]      o_zp_in,
+    output wire [O_OUT_CH_W-1:0]     o_out_channels,
+    output wire [O_REPEAT_CNT_W-1:0] o_repeat_cnt
 );
 
   sa_wrapper_axi_ctrl_sv #(
@@ -59,7 +67,15 @@ module sa_wrapper_axi_ctrl #(
       .C_DEPTH(C_DEPTH),
       .ACCUM_WIDTH(ACCUM_WIDTH),
       .DATA_WIDTH_IN(DATA_WIDTH_IN),
-      .DATA_WIDTH_OUT(DATA_WIDTH_OUT)
+      .DATA_WIDTH_OUT(DATA_WIDTH_OUT),
+      .MAX_MUL_Q(MAX_MUL_Q),
+      .MAX_SHIFT(MAX_SHIFT),
+      .MAX_ZP_OUT(MAX_ZP_OUT),
+      .MIN_ZP_OUT(MIN_ZP_OUT),
+      .MAX_ZP_IN(MAX_ZP_IN),
+      .MIN_ZP_IN(MIN_ZP_IN),
+      .MAX_OUT_CH(MAX_OUT_CH),
+      .MAX_REPEAT_CNT(MAX_REPEAT_CNT)
   ) impl (
       .clk            (clk),
       .rst_n          (rst_n),
@@ -89,7 +105,7 @@ module sa_wrapper_axi_ctrl #(
       .s_axil_rready  (s_axil_rready),
       .a_bypass       (a_bypass),
       .axis_bypass    (axis_bypass),
-      .idle           (idle),
+      // .idle           (idle),
       .o_mul_q        (o_mul_q),
       .o_shift        (o_shift),
       .o_zp_out       (o_zp_out),

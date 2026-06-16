@@ -60,7 +60,10 @@ class SystolicArray:
     REG_MUL_Q = 0x30  # RW  UINT16 quantized multiplier
     REG_SHIFT = 0x34  # RW  UINT5  right-shift amount
     REG_ZP_OUT = 0x38  # RW  INT8   output zero-point
-    REG_ZP_IN = 0x3C  # RW  INT8   input zero-point
+    REG_ZP_IN       = 0x3C  # RW  INT8   input zero-point
+    REG_OUT_CH      = 0x40  # RW  output channels count
+    REG_AXIS_BYPASS = 0x44  # RW  axis bypass flag
+    REG_REPEAT_CNT  = 0x48  # RW  chlast replay count
 
     # State enum (from defs.svh)
     STATE_IDLE = 0
@@ -215,6 +218,16 @@ class SystolicArray:
             c_loop_end = min(c_loop_end, self.c_depth - 1)
         self.reg_write(self.REG_C_LOOP_END, c_loop_end)
 
+    def configure_quant(self, mul_q=1, shift=0, zp_out=0, zp_in=0):
+        self.reg_write(self.REG_MUL_Q,  int(mul_q) & 0xFFFF)
+        self.reg_write(self.REG_SHIFT,  int(shift) & 0x1F)
+        self.reg_write(self.REG_ZP_OUT, int(zp_out) & 0xFF)
+        self.reg_write(self.REG_ZP_IN,  int(zp_in) & 0xFF)
+
+    def configure_channels(self, out_ch=4, repeat_cnt=4):
+        self.reg_write(self.REG_OUT_CH,     int(out_ch) & 0x7F)
+        self.reg_write(self.REG_REPEAT_CNT, int(repeat_cnt) & 0x1F)
+
     # ------------------------------------------------------------------
     #  Data packing — all input via single MM2S channel
     # ------------------------------------------------------------------
@@ -366,6 +379,64 @@ class SystolicArray:
             out, m * self.size, self.size, self._output_words_per_beat
         )
         in_a.freebuffer()
+        out.freebuffer()
+        return result
+
+    # ------------------------------------------------------------------
+    #  16×16 GEMM via block-major A + chlast B
+    # ------------------------------------------------------------------
+    @staticmethod
+    def to_block_major(mat, bh=4, bw=4):
+        H, W = mat.shape
+        return np.ascontiguousarray(
+            mat.reshape(H // bh, bh, W // bw, bw).transpose(0, 2, 1, 3)
+        )
+
+    def compute_16x16(self, A, B, c_vals=None, fb_cnt=3, repeat_cnt=4,
+                      mul_q=1, shift=2, zp_out=0, zp_in=0):
+        """16×16 GEMM on 4×4 SA via chlast + quantizer + tiled_to_chlast.
+
+        A: block-major (to_block_major), B: channel-last (row-major beats).
+        chlast transposes B → SA computes A×B^T.
+        fb_cnt=3 accumulates 4 column groups for full 16-wide dot product.
+        """
+        assert A.shape == B.shape == (16, 16)
+        self.soft_reset()
+        self.configure(fb_cnt=fb_cnt, a_loop_end=63)
+        self.configure_quant(mul_q, shift, zp_out, zp_in)
+        self.configure_channels(out_ch=16, repeat_cnt=repeat_cnt)
+
+        # A: block-major → 64 beats of 4 values
+        A_bm = self.to_block_major(A, 4, 4)
+        n_a = A_bm.size // self.size
+        in_a = self.pack_rows(A_bm.reshape(n_a, self.size), self._input_words_per_beat, 1)
+
+        # B: channel-last → 64 beats of 4 values (16 rows × 4 col-blocks)
+        B_r = B.reshape(-1, self.size)
+        in_b = self.pack_rows(B_r, self._input_words_per_beat, 1)
+
+        out = allocate(shape=(64 * self._output_words_per_beat,), dtype=np.uint32)
+
+        if c_vals is not None:
+            self.reg_write(self.REG_C_LOOP_START, 0)
+            self.reg_write(self.REG_C_LOOP_END, 15)
+            self.reg_write(self.REG_C_LOAD, 0)
+            in_c = self.pack_c_values(c_vals)
+            self._dma_send(in_c)
+            in_c.freebuffer()
+
+        self.reg_write(self.REG_A_LOAD, 0)
+        self._dma_send(in_a)
+
+        self.dma.recvchannel.start()
+        self.dma.recvchannel.transfer(out)
+        self._dma_send(in_b)
+        self.dma.recvchannel.wait()
+        self.wait_idle()
+
+        result = self.unpack_rows(out, 64, self.size, self._output_words_per_beat)
+        in_a.freebuffer()
+        in_b.freebuffer()
         out.freebuffer()
         return result
 

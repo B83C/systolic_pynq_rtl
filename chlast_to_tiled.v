@@ -1,11 +1,11 @@
 `timescale 1ns / 1ps (* keep = "true" *)
 
 module chlast_to_tiled #(
-    parameter DATA_WIDTH  = 8,
-    parameter CH_PER_BEAT = 8,
-    parameter CHANNELS    = 64,
-    parameter OUT_COL    = 8,
-    parameter MAX_REPLAY_CNT    = 16
+    parameter DATA_WIDTH   = 8,
+    parameter CH_PER_BEAT  = 8,
+    parameter MAX_CHANNELS = 64,
+    parameter OUT_COL      = 8,
+    parameter MAX_REPLAY_CNT = 16
 ) (
     input  wire                              clk,
     rst_n,
@@ -20,15 +20,15 @@ module chlast_to_tiled #(
     output wire                          m_axis_tlast,
 
     input wire                            bypass_i,
-    input wire [  $clog2(CHANNELS) - 1:0] cfg_channels_i,
-    input wire [$clog2(MAX_REPLAY_CNT):0] repeat_cnt_i
+    input wire [$clog2(MAX_CHANNELS+1)-1:0]   cfg_channels_i,
+    input wire [$clog2(MAX_REPLAY_CNT+1)-1:0] repeat_cnt_i
 );
 
   chlast_to_tiled_sv #(
-      .DATA_WIDTH(DATA_WIDTH),
-      .CH_PER_BEAT(CH_PER_BEAT),
-      .CHANNELS(CHANNELS),
-      .OUT_COL(OUT_COL),
+      .DATA_WIDTH   (DATA_WIDTH),
+      .CH_PER_BEAT  (CH_PER_BEAT),
+      .MAX_CHANNELS (MAX_CHANNELS),
+      .OUT_COL      (OUT_COL),
       .MAX_REPLAY_CNT(MAX_REPLAY_CNT)
   ) impl (
       .clk(clk),
