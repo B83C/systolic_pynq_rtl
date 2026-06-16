@@ -25,7 +25,7 @@ module tiled_to_chlast_sv #(
     // AXI4-Lite: config (only REG_CFG_CHANNELS)
     input  wire        s_axil_awvalid,
     output wire        s_axil_awready,
-    input  wire [3:0]  s_axil_awaddr,
+    input  wire [ 3:0] s_axil_awaddr,
     input  wire [31:0] s_axil_wdata,
     input  wire        s_axil_wvalid,
     output wire        s_axil_wready,
@@ -35,14 +35,15 @@ module tiled_to_chlast_sv #(
 
     input  wire        s_axil_arvalid,
     output wire        s_axil_arready,
-    input  wire [3:0]  s_axil_araddr,
+    input  wire [ 3:0] s_axil_araddr,
     output reg  [31:0] s_axil_rdata,
     output wire [ 1:0] s_axil_rresp,
     output reg         s_axil_rvalid,
     input  wire        s_axil_rready
 );
 
-  initial assert((MAX_CHANNELS & (MAX_CHANNELS - 1)) == 0)
+  initial
+    assert ((MAX_CHANNELS & (MAX_CHANNELS - 1)) == 0)
     else $fatal(1, "tiled_to_chlast_sv: MAX_CHANNELS must be a power of 2");
 
   localparam unsigned CH_PER_BEAT_LOG2 = $clog2(CH_PER_BEAT);
@@ -51,7 +52,7 @@ module tiled_to_chlast_sv #(
   localparam SP_BITS = (CH_PER_BEAT > 2) ? $clog2(CH_PER_BEAT) : 1;
   localparam OUT_COL_BITS = $clog2(OUT_COL);
   localparam CFG_CH_W = $clog2(MAX_CHANNELS + 1);
-  localparam REG_TC_CH      = 4'h0;
+  localparam REG_TC_CH = 4'h0;
   localparam REG_TC_BYPASS = 4'h4;
   logic bypass_r;
 
@@ -62,7 +63,7 @@ module tiled_to_chlast_sv #(
   // AXI write cannot glitch ch_blocks_max / out_ch_last / m_axis_tdata.
   logic [CFG_CH_W-1:0] cfg_channels;
   logic [CFG_CH_W-1:0] cfg_channels_q;
-  wire  [CFG_CH_W-1:0] ch_blocks_max = cfg_channels_q >> CH_PER_BEAT_LOG2;
+  wire [CFG_CH_W-1:0] ch_blocks_max = cfg_channels_q >> CH_PER_BEAT_LOG2;
 
   wire axil_wr_en = s_axil_awvalid && s_axil_wvalid && !s_axil_bvalid;
   wire axil_rd_en = s_axil_arvalid && !s_axil_rvalid;
@@ -78,19 +79,19 @@ module tiled_to_chlast_sv #(
   } state_t;
   state_t state, state_nxt;
 
-  logic                out_buf_sel;
-  logic [CFG_CH_W-1:0] in_cnt;
-  logic [     OUT_COL_BITS-1:0] out_col_cnt;
-  logic [       CHBLK_BITS-1:0] out_ch_cnt;
+  logic                    out_buf_sel;
+  logic [    CFG_CH_W-1:0] in_cnt;
+  logic [OUT_COL_BITS-1:0] out_col_cnt;
+  logic [  CHBLK_BITS-1:0] out_ch_cnt;
 
-  wire  [          SP_BITS-1:0] inner = in_cnt[SP_BITS-1:0];
-  wire  [       CHBLK_BITS-1:0] ch_blk = in_cnt[$bits(in_cnt)-1:SP_BITS];
-  wire  [     OUT_COL_BITS-1:0] out_col = out_col_cnt;
-  wire  [       CHBLK_BITS-1:0] out_ch = out_ch_cnt;
+  wire  [     SP_BITS-1:0] inner = in_cnt[SP_BITS-1:0];
+  wire  [  CHBLK_BITS-1:0] ch_blk = in_cnt[$bits(in_cnt)-1:SP_BITS];
+  wire  [OUT_COL_BITS-1:0] out_col = out_col_cnt;
+  wire  [  CHBLK_BITS-1:0] out_ch = out_ch_cnt;
 
-  wire                          in_last = in_cnt == cfg_channels - 1;
-  wire                          out_ch_last = out_ch_cnt == ch_blocks_max - 1;
-  wire                          out_last = (out_col_cnt == OUT_COL - 1) && out_ch_last;
+  wire                     in_last = in_cnt == cfg_channels - 1;
+  wire                     out_ch_last = out_ch_cnt == ch_blocks_max - 1;
+  wire                     out_last = (out_col_cnt == OUT_COL - 1) && out_ch_last;
 
   logic pending, pending_has_tlast, output_has_tlast;
   wire  input_last;
@@ -118,20 +119,20 @@ module tiled_to_chlast_sv #(
   // output counters + AXI-Lite config
   always @(posedge clk, negedge rst_n) begin
     if (!rst_n) begin
-      cfg_channels  <= MAX_CHANNELS;
+      cfg_channels   <= MAX_CHANNELS;
       cfg_channels_q <= MAX_CHANNELS;
-      out_col_cnt  <= 0;
-      out_ch_cnt   <= 0;
-      bypass_r      <= 0;
-      s_axil_bvalid <= 0;
-      s_axil_rvalid <= 0;
-      s_axil_rdata  <= 0;
+      out_col_cnt    <= 0;
+      out_ch_cnt     <= 0;
+      bypass_r       <= 0;
+      s_axil_bvalid  <= 0;
+      s_axil_rvalid  <= 0;
+      s_axil_rdata   <= 0;
     end else begin
       if (axil_wr_en) begin
         case (s_axil_awaddr)
-          REG_TC_CH:      cfg_channels <= s_axil_wdata[CFG_CH_W-1:0];
-          REG_TC_BYPASS:  bypass_r     <= s_axil_wdata[0];
-          default: ;
+          REG_TC_CH:     cfg_channels <= s_axil_wdata[CFG_CH_W-1:0];
+          REG_TC_BYPASS: bypass_r <= s_axil_wdata[0];
+          default:       ;
         endcase
         s_axil_bvalid <= 1;
       end else if (s_axil_bready) begin
@@ -144,7 +145,7 @@ module tiled_to_chlast_sv #(
 
       if (axil_rd_en) begin
         case (s_axil_araddr)
-          REG_TC_CH:     s_axil_rdata <= {{32-CFG_CH_W{1'b0}}, cfg_channels};
+          REG_TC_CH:     s_axil_rdata <= {{32 - CFG_CH_W{1'b0}}, cfg_channels};
           REG_TC_BYPASS: s_axil_rdata <= {31'h0, bypass_r};
           default:       s_axil_rdata <= 0;
         endcase
@@ -225,13 +226,13 @@ module tiled_to_chlast_sv #(
   // stalls on downstream back-pressure (m_axis_tready=0 with valid
   // pending) so no data is dropped.  The FSM also stalls on the same
   // condition (`out_pipe_adv_comb`).
-  wire [CH_PER_BEAT*DATA_WIDTH-1:0] tdata_pre  = buffer[out_buf_sel][out_col][out_ch];
-  wire                            tvalid_pre = rst_n && state == OUT_REPLAYING;
-  wire                            tlast_pre  = out_last && output_has_tlast;
-  wire                            out_pipe_adv_comb = !bypass_r && (!m_axis_tvalid_r || m_axis_tready);
+  wire [CH_PER_BEAT*DATA_WIDTH-1:0] tdata_pre = buffer[out_buf_sel][out_col][out_ch];
+  wire tvalid_pre = rst_n && state == OUT_REPLAYING;
+  wire tlast_pre = out_last && output_has_tlast;
+  wire out_pipe_adv_comb = !bypass_r && (!m_axis_tvalid_r || m_axis_tready);
   logic [CH_PER_BEAT*DATA_WIDTH-1:0] m_axis_tdata_r;
-  logic                            m_axis_tvalid_r;
-  logic                            m_axis_tlast_r;
+  logic m_axis_tvalid_r;
+  logic m_axis_tlast_r;
   always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
       m_axis_tdata_r  <= 0;
@@ -243,9 +244,9 @@ module tiled_to_chlast_sv #(
       m_axis_tlast_r  <= tlast_pre;
     end
   end
-  assign m_axis_tdata  = bypass_r ? s_axis_tdata  : m_axis_tdata_r;
+  assign m_axis_tdata = bypass_r ? s_axis_tdata : m_axis_tdata_r;
   assign m_axis_tvalid = bypass_r ? s_axis_tvalid : m_axis_tvalid_r;
-  assign m_axis_tlast  = bypass_r ? s_axis_tlast  : m_axis_tlast_r;
+  assign m_axis_tlast = bypass_r ? s_axis_tlast : m_axis_tlast_r;
 
   assign s_axis_tready = bypass_r ? m_axis_tready :
     rst_n && (state == OUT_IDLE || !pending) && !tlast_seen;

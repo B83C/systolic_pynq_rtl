@@ -66,9 +66,9 @@ module tb_pipeline;
   wire  [ 1:0] cl_rresp;
   wire         cl_rvalid;
   logic        cl_rready;
-  localparam CL_REG_CH      = 4'h0;
-  localparam CL_REG_RPT     = 4'h4;
-  localparam CL_REG_BYPASS  = 4'h8;
+  localparam CL_REG_CH = 4'h0;
+  localparam CL_REG_RPT = 4'h4;
+  localparam CL_REG_BYPASS = 4'h8;
 
   // quantizer AXI-Lite
   logic        q_awvalid;
@@ -108,7 +108,7 @@ module tb_pipeline;
   wire  [ 1:0] tc_rresp;
   wire         tc_rvalid;
   logic        tc_rready;
-  localparam TC_REG_CH  = 4'h0;
+  localparam TC_REG_CH = 4'h0;
   localparam TC_REG_BYPASS = 4'h4;
 
   chlast_to_tiled_sv #(
@@ -490,6 +490,7 @@ module tb_pipeline;
 
     $display("=== 16×16 A × B^T with /4 quant + c_ring bias ===");
 
+    tc_axil_write(TC_REG_BYPASS, 1);
     // ── Load c_ring: 16 values, c[i] = (i+1)*4 ──
     $display("  Loading c_ring: c[i] = (i+1)*4");
     saw(REG_C_LOOP_START, 0);
@@ -519,10 +520,10 @@ module tb_pipeline;
     saw(REG_C_LOOP_END, 15);  // C matrix, every column share the same values, 16 rows
 
     // cfg_channels -> chlast_to_tiled AND tiled_to_chlast
-    cl_axil_write(CL_REG_CH,      CH);
-    tc_axil_write(TC_REG_CH,      CH);
+    cl_axil_write(CL_REG_CH, CH);
+    tc_axil_write(TC_REG_CH, CH);
     tc_axil_write(TC_REG_BYPASS, 0);
-    cl_axil_write(CL_REG_RPT,     4);  // chlast replay 4 times
+    cl_axil_write(CL_REG_RPT, 4);  // chlast replay 4 times
     saw(REG_A_LOAD, 0);
 
     // ── Load A: block-major via chlast bypass ──
@@ -541,8 +542,8 @@ module tb_pipeline;
     cl_axil_write(CL_REG_BYPASS, 0);
     // prime
     cl_in = 0;
-    cl_v = 0;
-    cl_l = 0;
+    cl_v  = 0;
+    cl_l  = 0;
     @(negedge clk);
     while (!cl_r) @(negedge clk);
     cl_v = 0;
