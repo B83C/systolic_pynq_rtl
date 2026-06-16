@@ -101,7 +101,7 @@ module tiled_to_chlast #(
     unique case (state)
       OUT_IDLE: state_nxt = (s_axis_tvalid && s_axis_tready && in_last) ? OUT_REPLAYING : OUT_IDLE;
       OUT_REPLAYING:
-      state_nxt = (out_last && !pending && !input_last && m_axis_tready) ? OUT_IDLE : OUT_REPLAYING;
+      state_nxt = (out_last && !pending && !input_last && out_pipe_adv_comb) ? OUT_IDLE : OUT_REPLAYING;
     endcase
   end
 
@@ -138,7 +138,7 @@ module tiled_to_chlast #(
         s_axil_rvalid <= 0;
       end
 
-      if (state == OUT_REPLAYING && m_axis_tready) begin
+      if (state == OUT_REPLAYING && out_pipe_adv_comb) begin
         if (out_ch_last) begin
           out_ch_cnt  <= 0;
           out_col_cnt <= out_last ? 0 : out_col_cnt + 1;
@@ -205,8 +205,32 @@ module tiled_to_chlast #(
 
   assign s_axis_tready = bypass_i ? m_axis_tready :
     rst_n && (state == OUT_IDLE || !pending) && !tlast_seen;
-  assign m_axis_tvalid = bypass_i ? s_axis_tvalid : rst_n && state == OUT_REPLAYING;
-  assign m_axis_tdata = bypass_i ? s_axis_tdata : buffer[out_buf_sel][out_col][out_ch];
-  assign m_axis_tlast = bypass_i ? s_axis_tlast : out_last && output_has_tlast;
+  // Output pipeline stage — register tdata/tvalid/tlast to break the long
+  // combinational path from the BRAM read to the AXI-Stream output.
+  // In bypass mode the signals pass straight through (combinational) so
+  // bypass has zero added latency.  When not bypassed, the pipeline reg
+  // stalls on downstream back-pressure (m_axis_tready=0 with valid
+  // pending) so no data is dropped.  FSM also stalls on same condition.
+  wire [CH_PER_BEAT*DATA_WIDTH-1:0] tdata_pre  = buffer[out_buf_sel][out_col][out_ch];
+  wire                            tvalid_pre = rst_n && state == OUT_REPLAYING;
+  wire                            tlast_pre  = out_last && output_has_tlast;
+  wire                            out_pipe_adv_comb = !bypass_i && (!m_axis_tvalid_r || m_axis_tready);
+  logic [CH_PER_BEAT*DATA_WIDTH-1:0] m_axis_tdata_r;
+  logic                            m_axis_tvalid_r;
+  logic                            m_axis_tlast_r;
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      m_axis_tdata_r  <= 0;
+      m_axis_tvalid_r <= 0;
+      m_axis_tlast_r  <= 0;
+    end else if (out_pipe_adv_comb) begin
+      m_axis_tdata_r  <= tdata_pre;
+      m_axis_tvalid_r <= tvalid_pre;
+      m_axis_tlast_r  <= tlast_pre;
+    end
+  end
+  assign m_axis_tdata  = bypass_i ? s_axis_tdata  : m_axis_tdata_r;
+  assign m_axis_tvalid = bypass_i ? s_axis_tvalid : m_axis_tvalid_r;
+  assign m_axis_tlast  = bypass_i ? s_axis_tlast  : m_axis_tlast_r;
 
 endmodule
