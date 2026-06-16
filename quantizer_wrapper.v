@@ -1,12 +1,12 @@
 `timescale 1ns / 1ps
 
 module quantizer_wrapper #(
-    parameter unsigned SIZE           = 4,
-    parameter unsigned DATA_WIDTH_IN  = 32,
-    parameter unsigned DATA_WIDTH_OUT = 8,
-    parameter unsigned ACCUM_WIDTH    = 32,
-    parameter unsigned MAX_MUL_Q       = 65535,
-    parameter unsigned MAX_SHIFT       = 31,
+    parameter SIZE           = 4,
+    parameter DATA_WIDTH_IN  = 32,
+    parameter DATA_WIDTH_OUT = 8,
+    parameter ACCUM_WIDTH    = 32,
+    parameter MAX_MUL_Q       = 65535,
+    parameter MAX_SHIFT       = 31,
     parameter integer  MAX_ZP_OUT      = 127,
     parameter integer  MIN_ZP_OUT      = -128
 ) (

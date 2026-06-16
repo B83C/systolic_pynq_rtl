@@ -1,10 +1,10 @@
 `timescale 1ns / 1ps
 (* keep = "true" *)
 module depthwise_conv3x3 #(
-    parameter unsigned DATA_WIDTH = 8,
-    parameter unsigned CHANNELS   = 8,
-    parameter unsigned IMG_W      = 32,
-    parameter unsigned IMG_H      = 32
+    parameter DATA_WIDTH = 8,
+    parameter CHANNELS   = 8,
+    parameter IMG_W      = 32,
+    parameter IMG_H      = 32
 ) (
     input  wire clk,
     input  wire rst_n,

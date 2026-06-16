@@ -1,10 +1,10 @@
 `timescale 1ns / 1ps
 (* keep = "true" *)
 module tiled_to_chlast_gather #(
-    parameter unsigned DATA_WIDTH   = 8,
-    parameter unsigned CH_PER_BEAT  = 8,
-    parameter unsigned MAX_CHANNELS = 64,
-    parameter unsigned OUT_COL      = 8
+    parameter DATA_WIDTH   = 8,
+    parameter CH_PER_BEAT  = 8,
+    parameter MAX_CHANNELS = 64,
+    parameter OUT_COL      = 8
 ) (
     input  wire clk,
     input  wire rst_n,

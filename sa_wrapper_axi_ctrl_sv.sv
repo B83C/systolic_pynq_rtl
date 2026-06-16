@@ -353,7 +353,6 @@ module sa_wrapper_axi_ctrl_sv #(
       end
 
       if (a_consume) begin
-        a_ring[a_rd_ptr] <= s_axis_B_tdata;
         if (a_rd_ptr == a_loop_end) begin
           a_rd_ptr <= a_loop_start;
         end else begin
@@ -369,10 +368,15 @@ module sa_wrapper_axi_ctrl_sv #(
     end
   end
 
+  // a_ring BRAM write — separate block without async reset for BRAM inference
+  always_ff @(posedge clk) begin
+    if (a_consume)
+      a_ring[a_rd_ptr] <= s_axis_B_tdata;
+  end
+
   always_ff @(posedge clk, negedge rst_n) begin
     if (!rst_n) begin
       c_rd_ptr <= c_loop_start;
-      c_ring   <= '{default: '0};
     end else if (soft_rst) begin
       c_rd_ptr <= c_loop_start;
     end else begin
@@ -380,7 +384,6 @@ module sa_wrapper_axi_ctrl_sv #(
         c_rd_ptr <= c_loop_start;
       end
       if (c_consume) begin
-        c_ring[c_rd_ptr] <= s_axis_B_tdata[ACCUM_WIDTH-1:0];
         if (c_rd_ptr == c_loop_end) c_rd_ptr <= c_loop_start;
         else c_rd_ptr <= c_rd_ptr + 1;
       end else if (new_batch && b_consume) begin
@@ -388,6 +391,12 @@ module sa_wrapper_axi_ctrl_sv #(
         else c_rd_ptr <= c_rd_ptr + 1;
       end
     end
+  end
+
+  // c_ring BRAM write — separate block without async reset for BRAM inference
+  always_ff @(posedge clk) begin
+    if (c_consume)
+      c_ring[c_rd_ptr] <= s_axis_B_tdata[ACCUM_WIDTH-1:0];
   end
 
 

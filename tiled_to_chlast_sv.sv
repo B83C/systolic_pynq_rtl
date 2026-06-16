@@ -67,9 +67,9 @@ module tiled_to_chlast_sv #(
   // * CH_BLOCKS <= 64) the user can override via
   // `define FORCE_LUTRAM 1` in the wrapper.
 `ifndef FORCE_LUTRAM
-  (* ram_style = "block" *) logic [CH_PER_BEAT*DATA_WIDTH-1:0] buffer[2][OUT_COL][CH_BLOCKS];
+  (* ram_style = "block" *) logic [CH_PER_BEAT*DATA_WIDTH-1:0] buffer[2 * OUT_COL][CH_BLOCKS];
 `else
-  (* ram_style = "distributed" *) logic [CH_PER_BEAT*DATA_WIDTH-1:0] buffer[2][OUT_COL][CH_BLOCKS];
+  (* ram_style = "distributed" *) logic [CH_PER_BEAT*DATA_WIDTH-1:0] buffer[2 * OUT_COL][CH_BLOCKS];
 `endif
 
   // cfg_channels is the live AXI reg; cfg_channels_q is the shadow used by
@@ -218,11 +218,11 @@ module tiled_to_chlast_sv #(
     end else if (!bypass_r && (accept_data || tlast_seen)) begin
       if (tlast_seen) begin
         for (int c = 0; c < OUT_COL; c++) begin
-          buffer[input_sel][c][ch_blk][BUF_IDX_W'(inner)] <= 0;
+          buffer[input_sel * OUT_COL + c][ch_blk][BUF_IDX_W'(inner)] <= 0;
         end
       end else begin
         for (int c = 0; c < OUT_COL; c++) begin
-          buffer[input_sel][c][ch_blk][BUF_IDX_W'(inner * DATA_WIDTH) +: DATA_WIDTH]
+          buffer[input_sel * OUT_COL + c][ch_blk][BUF_IDX_W'(inner * DATA_WIDTH) +: DATA_WIDTH]
             <= s_axis_tdata[BUF_IDX_W'(c*DATA_WIDTH)+:DATA_WIDTH];
         end
       end
@@ -249,7 +249,7 @@ module tiled_to_chlast_sv #(
   // stalls on downstream back-pressure (m_axis_tready=0 with valid
   // pending) so no data is dropped.  The FSM also stalls on the same
   // condition (`out_pipe_adv_comb`).
-  wire [CH_PER_BEAT*DATA_WIDTH-1:0] tdata_pre = buffer[out_buf_sel][out_col_cnt][out_ch_cnt];
+  wire [CH_PER_BEAT*DATA_WIDTH-1:0] tdata_pre = buffer[out_buf_sel * OUT_COL + out_col_cnt][out_ch_cnt];
   wire tvalid_pre = rst_n && state == OUT_REPLAYING;
   wire tlast_pre = out_last && output_has_tlast;
   wire out_pipe_adv_comb = !bypass_r && (!m_axis_tvalid_r || m_axis_tready);

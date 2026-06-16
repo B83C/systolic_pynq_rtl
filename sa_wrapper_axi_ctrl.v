@@ -1,11 +1,11 @@
 `timescale 1ns / 1ps (* keep = "true" *)
 module sa_wrapper_axi_ctrl #(
-    parameter unsigned A_DEPTH        = 4,
-    parameter unsigned C_DEPTH        = 4,
-    parameter unsigned ACCUM_WIDTH    = 32,
-    parameter unsigned SIZE           = 4,
-    parameter unsigned DATA_WIDTH_IN  = 8,
-    parameter unsigned DATA_WIDTH_OUT = 8
+    parameter A_DEPTH        = 4,
+    parameter C_DEPTH        = 4,
+    parameter ACCUM_WIDTH    = 32,
+    parameter SIZE           = 4,
+    parameter DATA_WIDTH_IN  = 8,
+    parameter DATA_WIDTH_OUT = 8
 ) (
     input wire clk,
     input wire rst_n,
