@@ -64,6 +64,14 @@ test-pipeline:
     --Mdir tb_pipeline_obj/ -Wno-UNOPTFLAT -Wno-IMPLICITSTATIC
   cd tb_pipeline_obj/ && timeout 30 ./Vtb_pipeline
 
+# Gather+flush tiled_to_chlast smoke test
+test-gather:
+  verilator --cc tb_tc_gather.sv --trace-fst --build \
+    -CFLAGS -O0 -CFLAGS -fuse-ld=mold \
+    --verilate-jobs 16 --threads 4 --hierarchical --timing --binary \
+    --Mdir tb_tc_gather_obj/ -Wno-UNOPTFLAT -Wno-IMPLICITSTATIC
+  cd tb_tc_gather_obj/ && timeout 15 ./Vtb_tc_gather
+
 # # C++ testbench: compile DUT + tb_main.cpp into shared obj dir
 # test-cpp: (bind-cpp)
 #   cd ./sa_wrapper_axi_ctrl_tb_obj/ && timeout 30 ./Vsa_wrapper_axi_ctrl_sv
