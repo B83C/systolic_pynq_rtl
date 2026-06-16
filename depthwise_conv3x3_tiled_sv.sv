@@ -197,51 +197,59 @@ module depthwise_conv3x3_tiled_sv #(
     else result <= DATA_WIDTH'(sum);
   end
 
+  // MAC valid pipeline
+  localparam unsigned PLEN = 4;
+  logic [PLEN-1:0] mac_valid;
+  always @(posedge clk) begin
+    mac_valid[0] <= (state == PROC);
+    for (int i = 0; i < PLEN-1; i++)
+      mac_valid[i+1] <= mac_valid[i];
+  end
+
   // Output buffer: accumulate SPATIAL results, emit one beat
   logic [SPATIAL*DATA_WIDTH-1:0] out_buf;
+
+  // PROC runs SPATIAL + PLEN cycles.
+  // Result valid when out_pix >= PLEN-1.
+  // Write to out_buf at position (out_pix - PLEN + 1).
 
   always @(posedge clk) begin
     unique case (state)
       FILL: begin
         if (row_cnt >= 3 && s_axis_tvalid && tile_cnt == 0 && ch_cnt == 0) begin
-          state <= PROC;
+          state  <= PROC;
           out_ch <= 0; out_tile <= 0; out_pix <= 0; out_row <= 2;
         end
       end
       PROC: begin
-        if (out_pix == SPATIAL - 1) begin
-          // Last pixel of this tile — emit and advance
-          out_buf[out_pix*DATA_WIDTH+:DATA_WIDTH] <= result;
-          state <= OUT_TILE;
-          m_axis_tdata <= out_buf;
-          m_axis_tvalid <= 1;
-        end else begin
-          out_buf[out_pix*DATA_WIDTH+:DATA_WIDTH] <= result;
-          out_pix <= out_pix + 1;
+        if (out_pix >= PLEN - 1) begin
+          automatic int wp = out_pix - (PLEN - 1);
+          if (wp < SPATIAL)
+            out_buf[wp*DATA_WIDTH+:DATA_WIDTH] <= result;
         end
+        if (out_pix == SPATIAL + PLEN - 2) begin
+          state <= OUT_TILE;
+        end
+        out_pix <= out_pix + 1;
       end
       OUT_TILE: begin
-        if (m_axis_tready || !m_axis_tvalid) begin
-          m_axis_tvalid <= 0;
+        if (!m_axis_tvalid || m_axis_tready) begin
+          m_axis_tdata  <= out_buf;
+          m_axis_tvalid <= 1;
+          m_axis_tlast  <= 0;
           if (out_tile == TILES - 1) begin
             out_tile <= 0;
+            m_axis_tlast  <= (out_row == IMG_H - 1);
             if (out_ch == CHANNELS - 1) begin
               out_ch <= 0;
               out_row <= out_row + 1;
-              if (out_row == IMG_H - 1) begin
-                state <= FILL;  // or idle
-                m_axis_tlast <= 1;
-                out_tile <= TILES - 1;  // hack: force tlast on last tile... 
-              end
+              state <= (out_row == IMG_H - 1) ? FILL : PROC;
             end else begin
               out_ch <= out_ch + 1;
-              out_tile <= 0;
-              out_pix <= 0;
               state <= PROC;
             end
           end else begin
             out_tile <= out_tile + 1;
-            out_pix <= 0;
             state <= PROC;
           end
         end
