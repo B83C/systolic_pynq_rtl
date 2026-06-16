@@ -58,7 +58,7 @@ module sa_wrapper_axi_ctrl #(
     output wire [$clog2(MAX_ZP_OUT-MIN_ZP_OUT+1)-1:0] o_zp_out,
     output wire [$clog2(MAX_ZP_IN-MIN_ZP_IN+1)-1:0]   o_zp_in,
     output wire [$clog2(MAX_OUT_CH+1)-1:0]           o_out_channels,
-    output wire [$clog2(MAX_REPLAY_CNT+1)-1:0]       o_repeat_cnt
+    output wire [$clog2(MAX_REPEAT_CNT+1)-1:0]       o_repeat_cnt
 );
 
   sa_wrapper_axi_ctrl_sv #(
