@@ -155,4 +155,5 @@ upload num="1":
   scp test_systolic/test_systolic.gen/sources_1/bd/design_{{num}}/hw_handoff/design_{{num}}.hwh pynq:~/jupyter_notebooks/test_systolic_vivado_manual/systolic.hwh
   scp test_systolic/test_systolic.runs/impl_1/design_{{num}}_wrapper.bit pynq:~/jupyter_notebooks/test_systolic_vivado_manual/systolic.bit
   scp systolic.py pynq:~/jupyter_notebooks/test_systolic_vivado_manual/systolic.py
+  scp ./systolic_regs.py pynq:~/jupyter_notebooks/test_systolic_vivado_manual/systolic_regs.py
   
