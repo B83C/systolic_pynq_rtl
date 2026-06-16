@@ -111,7 +111,7 @@ module tb_pipeline;
   localparam TC_REG_CH = 4'h0;
   localparam TC_REG_BYPASS = 4'h4;
 
-  chlast_to_tiled_gather_sv #(
+  chlast_to_tiled_sv #(
       .DATA_WIDTH(DWI),
       .CH_PER_BEAT(CH_PER),
       .MAX_CHANNELS(CH),
