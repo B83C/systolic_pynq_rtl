@@ -1,7 +1,8 @@
 `timescale 1ns / 1ps
 
 // Quantizer:  q_out = clamp(((acc * mul_q) >>> shift) + zp_out, MIN, MAX)
-// 3 pipeline stages: S0 = input reg, S1 = DSP+shift → reg, S2 = add_zp+clamp → reg
+// 4 pipeline stages: S0 = input reg, S1 = DSP+window → reg,
+//                    S2 = barrel → reg, S3 = add_zp+clamp → reg
 // AXI-Lite slave: REG_MUL_Q, REG_SHIFT, REG_ZP_OUT (3-bit address space)
 
 module quantizer #(
@@ -118,25 +119,69 @@ module quantizer #(
         end
     end
 
+    // 16-way mux: select q_prod[15+shift_lo : shift_lo] from a 32-bit window.
+    // This avoids the sign-extension bug of `>>>` on truncated data: we pick
+    // the exact 16-bit slice from q_prod based on the manual shift lower bits.
+    function automatic logic signed [MUL_Q_W-1:0] barrel_16(
+        input logic signed [31:0] w,
+        input logic [3:0] sh
+    );
+        case (sh)
+            4'd0:  barrel_16 = w[15:0];
+            4'd1:  barrel_16 = w[16:1];
+            4'd2:  barrel_16 = w[17:2];
+            4'd3:  barrel_16 = w[18:3];
+            4'd4:  barrel_16 = w[19:4];
+            4'd5:  barrel_16 = w[20:5];
+            4'd6:  barrel_16 = w[21:6];
+            4'd7:  barrel_16 = w[22:7];
+            4'd8:  barrel_16 = w[23:8];
+            4'd9:  barrel_16 = w[24:9];
+            4'd10: barrel_16 = w[25:10];
+            4'd11: barrel_16 = w[26:11];
+            4'd12: barrel_16 = w[27:12];
+            4'd13: barrel_16 = w[28:13];
+            4'd14: barrel_16 = w[29:14];
+            4'd15: barrel_16 = w[30:15];
+        endcase
+    endfunction
+
     // -- stage 0 registers (raw accumulator input) --
     logic signed [ACCUM_WIDTH-1:0] acc_r[SIZE];
     logic s0_valid, s0_last;
 
-    // -- stage 1 registers (after DSP+shift) --
-    logic signed [ACCUM_WIDTH+MUL_Q_W-1:0] q_shifted_r[SIZE];
+    // -- stage 1 registers (after DSP + 32-bit window mux) --
+    logic signed [31:0] q_prod_window_r[SIZE];
     logic s1_valid, s1_last;
 
-    // -- stage 2 registers (after add_zp+clamp) --
-    logic signed [MUL_Q_W-1:0] q_out_r[SIZE];
+    // -- stage 2 registers (after barrel_16 mux) --
+    logic signed [MUL_Q_W-1:0] q_shifted_r[SIZE];
     logic s2_valid, s2_last;
 
+    // -- stage 3 registers (after add_zp+clamp) --
+    logic signed [MUL_Q_W-1:0] q_out_r[SIZE];
+    logic s3_valid, s3_last;
+
     wire signed [ACCUM_WIDTH+MUL_Q_W-1:0] q_prod[SIZE];
-    wire signed [ACCUM_WIDTH+MUL_Q_W-1:0] q_shifted[SIZE];
+    wire signed [31:0]                     q_prod_window[SIZE];
     generate
-        for (genvar qi = 0; qi < SIZE; qi++) begin : gen_quant
+        for (genvar qi = 0; qi < SIZE; qi++) begin : gen_dsp
             (* use_dsp = "yes" *)
-            assign q_prod[qi]   = $signed(acc_r[qi]) * $signed({{(ACCUM_WIDTH-MUL_Q_W){1'b0}}, mul_q});
-            assign q_shifted[qi] = $signed(q_prod[qi]) >>> shift;
+            assign q_prod[qi] = $signed(acc_r[qi]) * $signed({{(ACCUM_WIDTH-MUL_Q_W){1'b0}}, mul_q});
+            // Stage-1 mux: extract a 32-bit window of q_prod.
+            //   shift[4]=0 → q_prod[30:0]  (covers shift lower 0..15)
+            //   shift[4]=1 → q_prod[46:16] (covers shift lower 0..15 after +16)
+            assign q_prod_window[qi] = shift[4] ? q_prod[qi][47:16] : q_prod[qi][31:0];
+        end
+    endgenerate
+
+    wire signed [MUL_Q_W-1:0] q_shifted[SIZE];
+    generate
+        for (genvar qi = 0; qi < SIZE; qi++) begin : gen_shift
+            // Stage-2: barrel_16 picks q_prod[15+shift[3:0] : shift[3:0]]
+            // from the registered window (q_prod_window_r already accounts for shift[4] offset).
+            // No sign-extension issue: this is a raw mux, not an arithmetic shift.
+            assign q_shifted[qi] = barrel_16(q_prod_window_r[qi], shift[3:0]);
         end
     endgenerate
 
@@ -145,7 +190,7 @@ module quantizer #(
     generate
         for (genvar qi = 0; qi < SIZE; qi++) begin : gen_clamp
             assign q_with_zp[qi] = MUL_Q_W'(
-                $signed(q_shifted_r[qi][MUL_Q_W-1:0])
+                $signed(q_shifted_r[qi])
                 + $signed({zp_out[ZP_OUT_W-1], zp_out})
             );
             assign q_out[qi]     = (q_with_zp[qi] > MUL_Q_W'(ZP_OUT_CLAMP_HI)) ? MUL_Q_W'(ZP_OUT_CLAMP_HI) :
@@ -154,36 +199,43 @@ module quantizer #(
         end
     endgenerate
 
-    wire stall = s2_valid && !m_axis_tready;
+    wire stall = s3_valid && !m_axis_tready;
     wire pipe_shift = !stall;
 
     assign s_axis_tready = !stall;
-    assign m_axis_tvalid = s2_valid;
-    assign m_axis_tlast  = s2_valid && s2_last;
+    assign m_axis_tvalid = s3_valid;
+    assign m_axis_tlast  = s3_valid && s3_last;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            acc_r       <= '{default: 0};
-            q_shifted_r <= '{default: 0};
-            q_out_r     <= '{default: 0};
+            acc_r           <= '{default: 0};
+            q_prod_window_r <= '{default: 0};
+            q_shifted_r     <= '{default: 0};
+            q_out_r         <= '{default: 0};
             s0_valid <= 0; s0_last <= 0;
             s1_valid <= 0; s1_last <= 0;
             s2_valid <= 0; s2_last <= 0;
+            s3_valid <= 0; s3_last <= 0;
         end else if (pipe_shift) begin
-            // stage 0: register raw input
+            // S0: register raw input
             acc_r    <= acc;
             s0_valid <= s_axis_tvalid;
             s0_last  <= s_axis_tvalid && s_axis_tlast;
 
-            // stage 1: register after DSP+shift
-            q_shifted_r <= q_shifted;
+            // S1: register after DSP + 32-bit window mux
+            q_prod_window_r <= q_prod_window;
             s1_valid <= s0_valid;
             s1_last  <= s0_last;
 
-            // stage 2: register after add_zp+clamp
-            q_out_r  <= q_out;
+            // S2: register after barrel_16 mux
+            q_shifted_r <= q_shifted;
             s2_valid <= s1_valid;
             s2_last  <= s1_last;
+
+            // S3: register after add_zp+clamp
+            q_out_r  <= q_out;
+            s3_valid <= s2_valid;
+            s3_last  <= s2_last;
         end
     end
 
