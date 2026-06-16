@@ -18,9 +18,7 @@ module tiled_to_chlast #(
     input  wire                              m_axis_tready,
     output wire                              m_axis_tlast,
 
-    input  wire        bypass_i,
-
-    // AXI4-Lite: config (REG_CFG_CHANNELS)
+    // AXI4-Lite: config (REG_CFG_CHANNELS, REG_BYPASS)
     input  wire        s_axil_awvalid,
     output wire        s_axil_awready,
     input  wire [3:0]  s_axil_awaddr,
@@ -56,7 +54,6 @@ module tiled_to_chlast #(
       .m_axis_tvalid     (m_axis_tvalid),
       .m_axis_tready     (m_axis_tready),
       .m_axis_tlast      (m_axis_tlast),
-      .bypass_i          (bypass_i),
       .s_axil_awvalid    (s_axil_awvalid),
       .s_axil_awready    (s_axil_awready),
       .s_axil_awaddr     (s_axil_awaddr),

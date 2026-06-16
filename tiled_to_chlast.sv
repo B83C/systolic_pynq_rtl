@@ -22,7 +22,7 @@ module tiled_to_chlast #(
     input  logic                              m_axis_tready,
     output logic                              m_axis_tlast,
 
-    input logic bypass_i,
+
 
     // AXI4-Lite: config (only REG_CFG_CHANNELS)
     input  wire        s_axil_awvalid,
@@ -53,7 +53,9 @@ module tiled_to_chlast #(
   localparam SP_BITS = (CH_PER_BEAT > 2) ? $clog2(CH_PER_BEAT) : 1;
   localparam OUT_COL_BITS = $clog2(OUT_COL);
   localparam CFG_CH_W = $clog2(MAX_CHANNELS + 1);
-  localparam REG_TC_CH = 4'h0;
+  localparam REG_TC_CH      = 4'h0;
+  localparam REG_TC_BYPASS = 4'h4;
+  logic bypass_r;
 
   logic [CH_PER_BEAT*DATA_WIDTH-1:0] buffer[2][OUT_COL][CH_BLOCKS];
 
@@ -117,12 +119,17 @@ module tiled_to_chlast #(
       cfg_channels_q <= MAX_CHANNELS;
       out_col_cnt  <= 0;
       out_ch_cnt   <= 0;
+      bypass_r      <= 0;
       s_axil_bvalid <= 0;
       s_axil_rvalid <= 0;
       s_axil_rdata  <= 0;
     end else begin
       if (axil_wr_en) begin
-        if (s_axil_awaddr == REG_TC_CH) cfg_channels <= s_axil_wdata[CFG_CH_W-1:0];
+        case (s_axil_awaddr)
+          REG_TC_CH:      cfg_channels <= s_axil_wdata[CFG_CH_W-1:0];
+          REG_TC_BYPASS:  bypass_r     <= s_axil_wdata[0];
+          default: ;
+        endcase
         s_axil_bvalid <= 1;
       end else if (s_axil_bready) begin
         s_axil_bvalid <= 0;
@@ -132,7 +139,11 @@ module tiled_to_chlast #(
       if (state == OUT_IDLE) cfg_channels_q <= cfg_channels;
 
       if (axil_rd_en) begin
-        s_axil_rdata <= (s_axil_araddr == REG_TC_CH) ? {{32-CFG_CH_W{1'b0}}, cfg_channels} : 0;
+        case (s_axil_araddr)
+          REG_TC_CH:     s_axil_rdata <= {{32-CFG_CH_W{1'b0}}, cfg_channels};
+          REG_TC_BYPASS: s_axil_rdata <= {31'h0, bypass_r};
+          default:       s_axil_rdata <= 0;
+        endcase
         s_axil_rvalid <= 1;
       end else if (s_axil_rready) begin
         s_axil_rvalid <= 0;
@@ -160,7 +171,7 @@ module tiled_to_chlast #(
   // buffer swap (now handled in input capture block below)
   /* removed - handled in input capture block */
 
-  wire accept_data = !bypass_i && s_axis_tvalid && s_axis_tready;
+  wire accept_data = !bypass_r && s_axis_tvalid && s_axis_tready;
   assign input_last = accept_data && in_last;
 
   // input capture + tlast tracking
@@ -176,7 +187,7 @@ module tiled_to_chlast #(
       tlast_seen        <= 0;
       pending_has_tlast <= 0;
       output_has_tlast  <= 0;
-    end else if (!bypass_i && (accept_data || tlast_seen)) begin
+    end else if (!bypass_r && (accept_data || tlast_seen)) begin
       if (tlast_seen) begin
         for (int c = 0; c < OUT_COL; c++) begin
           buffer[input_sel][c][ch_blk][inner] <= 0;
@@ -203,7 +214,7 @@ module tiled_to_chlast #(
     end
   end
 
-  assign s_axis_tready = bypass_i ? m_axis_tready :
+  assign s_axis_tready = bypass_r ? m_axis_tready :
     rst_n && (state == OUT_IDLE || !pending) && !tlast_seen;
   // Output pipeline stage — register tdata/tvalid/tlast to break the long
   // combinational path from the BRAM read to the AXI-Stream output.
@@ -214,7 +225,7 @@ module tiled_to_chlast #(
   wire [CH_PER_BEAT*DATA_WIDTH-1:0] tdata_pre  = buffer[out_buf_sel][out_col][out_ch];
   wire                            tvalid_pre = rst_n && state == OUT_REPLAYING;
   wire                            tlast_pre  = out_last && output_has_tlast;
-  wire                            out_pipe_adv_comb = !bypass_i && (!m_axis_tvalid_r || m_axis_tready);
+  wire                            out_pipe_adv_comb = !bypass_r && (!m_axis_tvalid_r || m_axis_tready);
   logic [CH_PER_BEAT*DATA_WIDTH-1:0] m_axis_tdata_r;
   logic                            m_axis_tvalid_r;
   logic                            m_axis_tlast_r;
@@ -229,8 +240,8 @@ module tiled_to_chlast #(
       m_axis_tlast_r  <= tlast_pre;
     end
   end
-  assign m_axis_tdata  = bypass_i ? s_axis_tdata  : m_axis_tdata_r;
-  assign m_axis_tvalid = bypass_i ? s_axis_tvalid : m_axis_tvalid_r;
-  assign m_axis_tlast  = bypass_i ? s_axis_tlast  : m_axis_tlast_r;
+  assign m_axis_tdata  = bypass_r ? s_axis_tdata  : m_axis_tdata_r;
+  assign m_axis_tvalid = bypass_r ? s_axis_tvalid : m_axis_tvalid_r;
+  assign m_axis_tlast  = bypass_r ? s_axis_tlast  : m_axis_tlast_r;
 
 endmodule

@@ -23,7 +23,7 @@ module chlast_to_tiled_sv #(
     input  logic                          m_axis_tready,
     output logic                          m_axis_tlast,
 
-    input logic bypass_i,
+
 
     // AXI4-Lite: config (REG_CFG_CHANNELS, REG_REPEAT_CNT)
     input  wire        s_axil_awvalid,
@@ -59,8 +59,10 @@ module chlast_to_tiled_sv #(
   localparam OUT_COL_BITS = $clog2(OUT_COL);
   localparam CFG_CH_W     = $clog2(MAX_CHANNELS + 1);
   localparam REPLAY_CNT_W = $clog2(MAX_REPLAY_CNT + 1);
-  localparam REG_CT_CH  = 4'h0;
-  localparam REG_CT_RPT = 4'h4;
+  localparam REG_CT_CH      = 4'h0;
+  localparam REG_CT_RPT     = 4'h4;
+  localparam REG_CT_BYPASS  = 4'h8;
+  logic bypass_r;
 
   logic [CH_PER_BEAT*DATA_WIDTH-1:0] buffer[2][OUT_COL][CH_BLOCKS];
 
@@ -117,7 +119,7 @@ module chlast_to_tiled_sv #(
    always @(posedge clk, negedge rst_n) begin
     if (!rst_n) begin
       out_state <= OUT_IDLE;
-    end else if (bypass_i) begin
+    end else if (bypass_r) begin
       out_state <= OUT_IDLE;
     end else begin
       out_state <= out_state_nxt;
@@ -132,14 +134,16 @@ module chlast_to_tiled_sv #(
       repeat_cnt_q  <= 1;
       out_buf_cntr  <= 0;
       out_replay_cnt <= repeat_cnt - 1;
+      bypass_r      <= 0;
       s_axil_bvalid <= 0;
       s_axil_rvalid <= 0;
       s_axil_rdata  <= 0;
     end else begin
       if (axil_wr_en) begin
         case (s_axil_awaddr)
-          REG_CT_CH:  cfg_channels <= s_axil_wdata[CFG_CH_W-1:0];
-          REG_CT_RPT: repeat_cnt   <= s_axil_wdata[REPLAY_CNT_W-1:0];
+          REG_CT_CH:     cfg_channels <= s_axil_wdata[CFG_CH_W-1:0];
+          REG_CT_RPT:    repeat_cnt   <= s_axil_wdata[REPLAY_CNT_W-1:0];
+          REG_CT_BYPASS: bypass_r    <= s_axil_wdata[0];
           default: ;
         endcase
         s_axil_bvalid <= 1;
@@ -156,16 +160,17 @@ module chlast_to_tiled_sv #(
 
       if (axil_rd_en) begin
         case (s_axil_araddr)
-          REG_CT_CH:  s_axil_rdata <= {{32-CFG_CH_W{1'b0}},     cfg_channels};
-          REG_CT_RPT: s_axil_rdata <= {{32-REPLAY_CNT_W{1'b0}}, repeat_cnt};
-          default:    s_axil_rdata <= 0;
+          REG_CT_CH:     s_axil_rdata <= {{32-CFG_CH_W{1'b0}},     cfg_channels};
+          REG_CT_RPT:    s_axil_rdata <= {{32-REPLAY_CNT_W{1'b0}}, repeat_cnt};
+          REG_CT_BYPASS: s_axil_rdata <= {31'h0, bypass_r};
+          default:       s_axil_rdata <= 0;
         endcase
         s_axil_rvalid <= 1;
       end else if (s_axil_rready) begin
         s_axil_rvalid <= 0;
       end
 
-      if (bypass_i) begin
+      if (bypass_r) begin
         out_buf_cntr   <= 0;
         out_replay_cnt <= repeat_cnt_q - 1;
       end else if (out_state == OUT_REPLAYING && out_pipe_adv_comb) begin
@@ -210,7 +215,7 @@ out_buf_cntr
   wire [OUT_COL*DATA_WIDTH-1:0] tdata_pre  = output_row;
   wire                          tvalid_pre = out_state == OUT_REPLAYING;
   wire                          tlast_pre  = out_last && output_has_tlast;
-  wire                          out_pipe_adv_comb = !bypass_i && (!m_axis_tvalid_r || m_axis_tready);
+  wire                          out_pipe_adv_comb = !bypass_r && (!m_axis_tvalid_r || m_axis_tready);
   logic [OUT_COL*DATA_WIDTH-1:0] m_axis_tdata_r;
   logic                          m_axis_tvalid_r;
   logic                          m_axis_tlast_r;
@@ -225,14 +230,14 @@ out_buf_cntr
       m_axis_tlast_r  <= tlast_pre;
     end
   end
-  assign m_axis_tdata  = bypass_i ? s_axis_tdata  : m_axis_tdata_r;
-  assign m_axis_tvalid = bypass_i ? s_axis_tvalid : m_axis_tvalid_r;
-  assign m_axis_tlast  = bypass_i ? s_axis_tlast  : m_axis_tlast_r;
+  assign m_axis_tdata  = bypass_r ? s_axis_tdata  : m_axis_tdata_r;
+  assign m_axis_tvalid = bypass_r ? s_axis_tvalid : m_axis_tvalid_r;
+  assign m_axis_tlast  = bypass_r ? s_axis_tlast  : m_axis_tlast_r;
 
 
   wire has_free = (out_state == OUT_IDLE || !pending) && !tlast_seen;
-  assign s_axis_tready = bypass_i ? m_axis_tready : has_free;
-  wire accept_data = !bypass_i && s_axis_tvalid && s_axis_tready;
+  assign s_axis_tready = bypass_r ? m_axis_tready : has_free;
+  wire accept_data = !bypass_r && s_axis_tvalid && s_axis_tready;
 
   logic [OUT_COL_BITS - 1:0] col_cntr;
   logic [CHBLK_BITS - 1:0] row_cntr;
@@ -253,7 +258,7 @@ out_buf_cntr
       pending <= 0;
       tlast_seen <= 0;
       pending_has_tlast <= 0;
-    end else if (!bypass_i && (accept_data || tlast_seen)) begin
+    end else if (!bypass_r && (accept_data || tlast_seen)) begin
       if (tlast_seen) begin
         buffer[input_sel][col_cntr][row_cntr] <= 0;
       end else begin
