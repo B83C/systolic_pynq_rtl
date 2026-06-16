@@ -1,10 +1,14 @@
 `timescale 1ns / 1ps
 
-// 3×3 depthwise convolution engine, NHWC pixel stream.
-//  - 3 line buffers (BRAM) for row buffering
-//  - 3×3 window extracted via shift registers
-//  - Per-channel MAC over the 9-window tap
-//  - Zero-padding at image edges
+// 3×3 depthwise convolution, SAME padding, NHWC pixel stream.
+//   - Line buffer stores 3 rows of (IMG_W + 2) pixels (1-pixel zp_in pad
+//     on left and right).
+//   - Top/bottom padding rows are generated internally.
+//   - Padding value is zp_in (from AXI-Lite), so border pixels contribute
+//     zero to the accumulator after the input-zero-point subtraction that
+//     the upstream SA already performs.
+//   - Output spatial dimensions = IMG_H × IMG_W  (SAME padding).
+//   - Per-channel 9-tap MAC with pipelined adder tree + saturation clamp.
 
 module depthwise_conv3x3_sv #(
     parameter DATA_WIDTH = 8,
@@ -15,19 +19,19 @@ module depthwise_conv3x3_sv #(
     input  logic                              clk,
     rst_n,
 
-    // AXI4-Stream: input (NHWC raster)
+    // AXI4-Stream: input (NHWC raster, IMG_H × IMG_W pixels)
     input  logic [CHANNELS*DATA_WIDTH-1:0] s_axis_tdata,
     input  logic                              s_axis_tvalid,
     output logic                              s_axis_tready,
     input  logic                              s_axis_tlast,
 
-    // AXI4-Stream: output
+    // AXI4-Stream: output (SAME-padded, zero-point = zp_in)
     output logic [CHANNELS*DATA_WIDTH-1:0] m_axis_tdata,
     output logic                              m_axis_tvalid,
     input  logic                              m_axis_tready,
     output logic                              m_axis_tlast,
 
-    // AXI4-Lite: weights + config
+    // AXI4-Lite
     input  wire        s_axil_awvalid,
     output wire        s_axil_awready,
     input  wire [ 7:0] s_axil_awaddr,
@@ -47,26 +51,17 @@ module depthwise_conv3x3_sv #(
     input  wire        s_axil_rready
 );
 
-  // ─── Parameters & constants ──────────────────────────────────────────
-  localparam unsigned PIX_W = CHANNELS * DATA_WIDTH;  // bits per pixel
-  localparam unsigned ADDR_W = (IMG_W > 1) ? $clog2(IMG_W) : 1;
-  localparam unsigned WIN_TAPS = 9;  // 3×3
-  // Number of AXI-Lite words for weights (9 weights per channel)
-  localparam unsigned WEIGHT_WORDS = 9 * CHANNELS;
-  // Weight register-file width (address = 4 * weight_word)
-  localparam unsigned WEIGHT_ADDR_W = $clog2(WEIGHT_WORDS * 4 + 1);
-  localparam unsigned REG_DW = 8'h00;      // image width (RO)
-  localparam unsigned REG_DH = 8'h04;      // image height (RO)
-  localparam unsigned REG_WEIGHT_BASE = 8'h10;  // weights start here
+  localparam unsigned PIX_W  = CHANNELS * DATA_WIDTH;
+  localparam unsigned ADDR_W = (IMG_W + 2 > 1) ? $clog2(IMG_W + 2) : 1;
+  localparam unsigned WIN_TAPS = 9;
 
-  // ─── Weight register file ────────────────────────────────────────────
-  // Packed: 9 weights per channel, each DATA_WIDTH bits wide.
-  // Storage: 9 * CHANNELS * DATA_WIDTH bits (e.g. 9*8*8 = 576 bits).
+  // AXI-Lite registers
+  localparam REG_WEIGHT_BASE = 8'h10;   // weights[0..9*CH-1] at 0x10 + 4*n
+  localparam REG_ZP_IN       = 8'h00;   // zero-point for padding
+
   logic [DATA_WIDTH-1:0] weights[9 * CHANNELS];
+  logic [DATA_WIDTH-1:0] zp_in;
 
-  // Weight index from AXI-Lite write address:
-  //   addr = REG_WEIGHT_BASE + 4 * idx  →  idx = (addr - REG_WEIGHT_BASE) / 4
-  // We store only one weight per 32-bit word (lower DATA_WIDTH bits).
   wire axil_wr_en = s_axil_awvalid && s_axil_wvalid && !s_axil_bvalid;
   wire axil_rd_en = s_axil_arvalid && !s_axil_rvalid;
   assign s_axil_awready = axil_wr_en;
@@ -80,9 +75,12 @@ module depthwise_conv3x3_sv #(
       s_axil_bvalid <= 0;
       s_axil_rvalid <= 0;
       s_axil_rdata  <= 0;
+      zp_in         <= 0;
     end else begin
       if (axil_wr_en) begin
-        if (s_axil_awaddr >= REG_WEIGHT_BASE) begin
+        if (s_axil_awaddr == REG_ZP_IN)
+          zp_in <= s_axil_wdata[DATA_WIDTH-1:0];
+        else if (s_axil_awaddr >= REG_WEIGHT_BASE) begin
           automatic int w_idx = int'(s_axil_awaddr - REG_WEIGHT_BASE) >> 2;
           if (w_idx < 9 * CHANNELS)
             weights[w_idx] <= s_axil_wdata[DATA_WIDTH-1:0];
@@ -93,10 +91,8 @@ module depthwise_conv3x3_sv #(
       end
 
       if (axil_rd_en) begin
-        if (s_axil_araddr == REG_DW)
-          s_axil_rdata <= IMG_W;
-        else if (s_axil_araddr == REG_DH)
-          s_axil_rdata <= IMG_H;
+        if (s_axil_araddr == REG_ZP_IN)
+          s_axil_rdata <= {{32 - DATA_WIDTH{1'b0}}, zp_in};
         else if (s_axil_araddr >= REG_WEIGHT_BASE) begin
           automatic int w_idx = int'(s_axil_araddr - REG_WEIGHT_BASE) >> 2;
           s_axil_rdata <= w_idx < 9 * CHANNELS ? {{32 - DATA_WIDTH{1'b0}}, weights[w_idx]} : 0;
@@ -109,73 +105,103 @@ module depthwise_conv3x3_sv #(
     end
   end
 
-  // ─── Line buffers ────────────────────────────────────────────────────
-  // 3 rows × IMG_W entries, each entry = one pixel (all channels).
-  // BRAM-inferred; single write port + single read port per buffer.
-  (* ram_style = "block" *) logic [PIX_W-1:0] line_buf[3][IMG_W];
+  // ─── Padded stream generator ────────────────────────────────────────
+  //   The padded image is (IMG_H+2) × (IMG_W+2).  Top and bottom padding
+  //   rows are all zp_in.  Each real row has one zp_in left pad, W real
+  //   pixels, one zp_in right pad.
+  localparam unsigned PW = IMG_W + 2;  // padded width
+  localparam unsigned PH = IMG_H + 2;  // padded height
+  localparam ADDR_W_PW = (PW > 1) ? $clog2(PW) : 1;
+  localparam ADDR_W_PH = (PH > 1) ? $clog2(PH) : 1;
 
-  logic [ADDR_W-1:0] col_cnt;        // current column (0..IMG_W-1)
-  logic [$clog2(IMG_H)-1:0] row_cnt; // current row (0..IMG_H-1)
-  logic [1:0] row_sel;               // which line buffer is the current write row
-  logic s_newline;                   // first pixel of a new line
-  logic input_valid;                 // qualified handshake
+  // Indicates whether the current pixel in the padded stream is
+  // a padding pixel (zp_in) or a real pixel from the input.
+  logic is_pad;
 
-  assign input_valid = s_axis_tvalid && s_axis_tready;
+  // S_axis_tready: accept real pixels only when NOT generating padding.
+  assign s_axis_tready = rst_n && !is_pad;
 
-  // Row/col counters
+  logic [ADDR_W_PH-1:0] pad_row;  // 0..IMG_H+1
+  logic [ADDR_W_PW-1:0] pad_col;  // 0..IMG_W+1
+  logic pad_row_last;             // last padded row
+  logic pad_col_last;             // last padded column
+
   always @(posedge clk, negedge rst_n) begin
     if (!rst_n) begin
-      col_cnt  <= 0;
-      row_cnt  <= 0;
-      row_sel  <= 0;
-    end else if (input_valid) begin
-      if (col_cnt == ADDR_W'(IMG_W - 1) || s_axis_tlast) begin
-        col_cnt <= 0;
-        row_cnt <= s_axis_tlast ? 0 : row_cnt + 1;
-        row_sel <= s_axis_tlast ? 0 : row_sel + 1;
+      pad_row <= 0;
+      pad_col <= 0;
+    end else begin
+      // Advance every cycle (padding or real — one beat per padded pixel)
+      if (pad_col_last) begin
+        pad_col <= 0;
+        pad_row <= pad_row_last ? 0 : pad_row + 1;
       end else begin
-        col_cnt <= col_cnt + 1;
+        pad_col <= pad_col + 1;
       end
     end
   end
 
-  assign s_newline = input_valid && (col_cnt == ADDR_W'(0));
+  assign pad_col_last = pad_col == ADDR_W_PW'(PW - 1);
+  assign pad_row_last = pad_row == ADDR_W_PH'(PH - 1);
 
-  // Write current input pixel to the current line buffer
-  always @(posedge clk) begin
-    if (input_valid)
-      line_buf[row_sel][col_cnt] <= s_axis_tdata;
+  // A pixel is "padding" when:
+  //   - row is top (0) or bottom (IMG_H+1) padding row, OR
+  //   - column is left (0) or right (IMG_W+1) within a real row
+  wire is_top_bottom = (pad_row == 0) || (pad_row == IMG_H + 1);
+  wire is_left_right = (pad_col == 0) || (pad_col == IMG_W + 1);
+  assign is_pad = is_top_bottom || is_left_right;
+
+  // ─── Line buffers ────────────────────────────────────────────────────
+  //   3 rows × PW entries, each entry = one pixel (all channels).
+  (* ram_style = "block" *) logic [PIX_W-1:0] line_buf[3][PW];
+
+  // Row-select modulo 3 — the line buffer has only 3 entries.
+  reg [1:0] row_sel;  // 0,1,2,0,1,2,...
+
+  always @(posedge clk, negedge rst_n) begin
+    if (!rst_n)
+      row_sel <= 0;
+    else if (pad_col_last)
+      row_sel <= (row_sel == 2) ? 0 : row_sel + 1;
   end
 
-  // Read from the 2 previous rows (for window extraction).
-  // row_sel = row currently being written (row N).
-  // Previous rows: row_sel - 1 (N-1), row_sel - 2 (N-2).
-  // Read at col_cnt (same column as write), output registered.
-  wire [1:0] prev_sel = row_sel - 1;
-  wire [1:0] prev2_sel = row_sel - 2;
+  wire [1:0] prev_sel  = (row_sel == 0) ? 2 : row_sel - 1;
+  wire [1:0] prev2_sel = (row_sel == 0) ? 1 : (row_sel == 1) ? 0 : 2;
+
+  // Write current padded pixel to line_buf.
+  // pad_data is COMBINATIONAL so the BRAM write uses the same-cycle pixel.
+  logic [PIX_W-1:0] pad_data, pad_data_q;
   logic [PIX_W-1:0] line_n1_out, line_n2_out;
 
+  always_comb begin
+    if (is_pad)
+      pad_data = {CHANNELS{zp_in}};
+    else
+      pad_data = s_axis_tdata;
+  end
+
+  // Registered copy for the tap shift register (matches BRAM read timing)
   always @(posedge clk) begin
-    line_n1_out <= line_buf[prev_sel][col_cnt];
-    line_n2_out <= line_buf[prev2_sel][col_cnt];
+    pad_data_q <= pad_data;
+    line_buf[row_sel][pad_col] <= pad_data;
+  end
+
+  always @(posedge clk) begin
+    line_n1_out <= line_buf[prev_sel][pad_col];
+    line_n2_out <= line_buf[prev2_sel][pad_col];
   end
 
   // ─── 3×3 window shift registers ──────────────────────────────────────
-  //   tap_r0: row N-2, 3 columns  (from line_n2_out)
-  //   tap_r1: row N-1, 3 columns  (from line_n1_out)
-  //   tap_r2: row N,   3 columns  (from current input, s_axis_tdata)
-  // Shift left each cycle: new pixel enters at position 0, oldest drops.
-  logic [PIX_W-1:0] tap_r0[3];  // [2]=col-1, [1]=col, [0]=col+1
-  logic [PIX_W-1:0] tap_r1[3];
-  logic [PIX_W-1:0] tap_r2[3];
+  //   tap_r0: row N-2, tap_r1: row N-1, tap_r2: row N.
+  //   Inside each row: [0] = left (col-1), [1] = center (col), [2] = right (col+1).
+  logic [PIX_W-1:0] tap_r0[3], tap_r1[3], tap_r2[3];
 
   always @(posedge clk, negedge rst_n) begin
     if (!rst_n) begin
       tap_r0[0] <= 0; tap_r0[1] <= 0; tap_r0[2] <= 0;
       tap_r1[0] <= 0; tap_r1[1] <= 0; tap_r1[2] <= 0;
       tap_r2[0] <= 0; tap_r2[1] <= 0; tap_r2[2] <= 0;
-    end else if (input_valid) begin
-      // Shift: new pixel at LSB, oldest drops (from MSB)
+    end else begin
       tap_r0[0] <= tap_r0[1];
       tap_r0[1] <= tap_r0[2];
       tap_r0[2] <= line_n2_out;
@@ -186,42 +212,20 @@ module depthwise_conv3x3_sv #(
 
       tap_r2[0] <= tap_r2[1];
       tap_r2[1] <= tap_r2[2];
-      tap_r2[2] <= s_axis_tdata;
-    end else if (col_cnt == 0 && row_cnt == 0) begin
-      // Reset on new frame (s_axis_tlast wraps row_cnt to 0)
-      tap_r0[0] <= 0; tap_r0[1] <= 0; tap_r0[2] <= 0;
-      tap_r1[0] <= 0; tap_r1[1] <= 0; tap_r1[2] <= 0;
-      tap_r2[0] <= 0; tap_r2[1] <= 0; tap_r2[2] <= 0;
+      tap_r2[2] <= pad_data_q;
     end
   end
 
   // ─── Per-channel MAC ─────────────────────────────────────────────────
-  //   For each channel c:
-  //     sum = 0
-  //     for i = 0..2, j = 0..2:
-  //       tap_idx = i * 3 + j
-  //       sum += tap_{r_i}[2-j][c] * weights[tap_idx * CHANNELS + c]
-  //
-  // We multiply 9 taps per channel; 9 cycles of pipelined MAC.
-  // Pipelined: 1-cycle MUL, 3-cycle adder tree (9→5→3→1).
-  // Simplified: use DSP48 for signed multiply-accumulate.
-
-  // Weights per tap: weights[tap * CHANNELS + c]  (tap 0..8, c 0..CH-1)
-  // Tap order: (r=0,c=0), (r=0,c=1), (r=0,c=2),
-  //            (r=1,c=0), (r=1,c=1), (r=1,c=2),
-  //            (r=2,c=0), (r=2,c=1), (r=2,c=2)
-
-  // First compute weighted products for all 9 taps in parallel
-  logic signed [DATA_WIDTH-1:0] tap_s[9][CHANNELS];  // signed pixel values
-  logic signed [DATA_WIDTH-1:0] wgt_s[9][CHANNELS];  // signed weight values
-  logic signed [2*DATA_WIDTH-1:0] prod[9][CHANNELS]; // product
+  logic signed [DATA_WIDTH-1:0] tap_s[9][CHANNELS];
+  logic signed [DATA_WIDTH-1:0] wgt_s[9][CHANNELS];
+  logic signed [2*DATA_WIDTH-1:0] prod[9][CHANNELS];
 
   always_comb begin
     for (int t = 0; t < 9; t++) begin
       for (int c = 0; c < CHANNELS; c++) begin
-        // Extract channel c from the tap pixel
         automatic int r = t / 3;
-        automatic int p = 2 - (t % 3);  // column position in shift reg
+        automatic int p = t % 3;  // 0=left, 1=center, 2=right
         case (r)
           0: tap_s[t][c] = $signed(tap_r0[p][c*DATA_WIDTH+:DATA_WIDTH]);
           1: tap_s[t][c] = $signed(tap_r1[p][c*DATA_WIDTH+:DATA_WIDTH]);
@@ -233,76 +237,95 @@ module depthwise_conv3x3_sv #(
     end
   end
 
-  // Adder tree: 9 products → 1 sum per channel
-  // Stage 1: 4+4+1 = 9 → 5
-  // Stage 2: 4+1    = 5 → 3
-  // Stage 3: 2+1    = 3 → 2
-  // Stage 4: 1+1    = 2 → 1
   localparam ACC_W = 2*DATA_WIDTH + $clog2(WIN_TAPS);
-  logic signed [ACC_W-1:0] sum_stage1[5][CHANNELS];
-  logic signed [ACC_W-1:0] sum_stage2[3][CHANNELS];
-  logic signed [ACC_W-1:0] sum_stage3[2][CHANNELS];
-  logic signed [ACC_W-1:0] sum_final[CHANNELS];
-  logic signed [ACC_W-1:0] result_int[CHANNELS];  // result before clamp
-  logic        [DATA_WIDTH-1:0] result[CHANNELS];
+  logic signed [ACC_W-1:0] sum_st1[5][CHANNELS];
+  logic signed [ACC_W-1:0] sum_st2[3][CHANNELS];
+  logic signed [ACC_W-1:0] sum_st3[2][CHANNELS];
+  logic signed [ACC_W-1:0] sum_fl[CHANNELS];
+  logic signed [ACC_W-1:0] res_int[CHANNELS];
+  logic        [DATA_WIDTH-1:0] res[CHANNELS];
 
-  genvar gi, gc;
+  genvar gc;
   generate
     for (gc = 0; gc < CHANNELS; gc++) begin : gen_mac
-      // Pipeline stage 1: 4+4+1
       always @(posedge clk) begin
-        sum_stage1[0][gc] <= $signed(prod[0][gc]) + $signed(prod[1][gc]);
-        sum_stage1[1][gc] <= $signed(prod[2][gc]) + $signed(prod[3][gc]);
-        sum_stage1[2][gc] <= $signed(prod[4][gc]) + $signed(prod[5][gc]);
-        sum_stage1[3][gc] <= $signed(prod[6][gc]) + $signed(prod[7][gc]);
-        sum_stage1[4][gc] <= $signed(prod[8][gc]);
+        sum_st1[0][gc] <= $signed(prod[0][gc]) + $signed(prod[1][gc]);
+        sum_st1[1][gc] <= $signed(prod[2][gc]) + $signed(prod[3][gc]);
+        sum_st1[2][gc] <= $signed(prod[4][gc]) + $signed(prod[5][gc]);
+        sum_st1[3][gc] <= $signed(prod[6][gc]) + $signed(prod[7][gc]);
+        sum_st1[4][gc] <= $signed(prod[8][gc]);
       end
-      // Stage 2: 5→3
       always @(posedge clk) begin
-        sum_stage2[0][gc] <= $signed(sum_stage1[0][gc]) + $signed(sum_stage1[1][gc]);
-        sum_stage2[1][gc] <= $signed(sum_stage1[2][gc]) + $signed(sum_stage1[3][gc]);
-        sum_stage2[2][gc] <= $signed(sum_stage1[4][gc]);
+        sum_st2[0][gc] <= $signed(sum_st1[0][gc]) + $signed(sum_st1[1][gc]);
+        sum_st2[1][gc] <= $signed(sum_st1[2][gc]) + $signed(sum_st1[3][gc]);
+        sum_st2[2][gc] <= $signed(sum_st1[4][gc]);
       end
-      // Stage 3: 3→2
       always @(posedge clk) begin
-        sum_stage3[0][gc] <= $signed(sum_stage2[0][gc]) + $signed(sum_stage2[1][gc]);
-        sum_stage3[1][gc] <= $signed(sum_stage2[2][gc]);
+        sum_st3[0][gc] <= $signed(sum_st2[0][gc]) + $signed(sum_st2[1][gc]);
+        sum_st3[1][gc] <= $signed(sum_st2[2][gc]);
       end
-      // Stage 4: 2→1
       always @(posedge clk) begin
-        sum_final[gc] <= $signed(sum_stage3[0][gc]) + $signed(sum_stage3[1][gc]);
+        sum_fl[gc] <= $signed(sum_st3[0][gc]) + $signed(sum_st3[1][gc]);
       end
-      // Clamp to DATA_WIDTH
       always @(posedge clk) begin
-        result_int[gc] <= sum_final[gc];
-        if (sum_final[gc] > ACC_W'(2**(DATA_WIDTH-1) - 1))
-          result[gc] <= {1'b0, {DATA_WIDTH-1{1'b1}}};  // sat max
-        else if (sum_final[gc] < ACC_W'(-2**(DATA_WIDTH-1)))
-          result[gc] <= {1'b1, {DATA_WIDTH-1{1'b0}}};  // sat min
+        res_int[gc] <= sum_fl[gc];
+        if (sum_fl[gc] > ACC_W'(2**(DATA_WIDTH-1) - 1))
+          res[gc] <= {1'b0, {DATA_WIDTH-1{1'b1}}};
+        else if (sum_fl[gc] < ACC_W'(-2**(DATA_WIDTH-1)))
+          res[gc] <= {1'b1, {DATA_WIDTH-1{1'b0}}};
         else
-          result[gc] <= DATA_WIDTH'(sum_final[gc]);
+          res[gc] <= DATA_WIDTH'(sum_fl[gc]);
       end
     end
   endgenerate
 
-  // ─── Output pipeline ─────────────────────────────────────────────────
-  //   The MAC pipeline is 5 stages deep.  After the first valid pixel,
-  //   the first valid output appears 5 cycles later.  We track valid
-  //   through the pipeline with a shift register.
-  localparam PIPELINE_DEPTH = 4;  // #pipe stages in MAC
-  logic [PIPELINE_DEPTH:0] valid_pipe;  // +1 for the output reg
+  // ─── Output valid tracking ───────────────────────────────────────────
+  //   Cycle counter from padded-stream start.
+  //   First real pixel at padded (1,1) arrives after PW+1 = W+3 cycles.
+  //   Pipeline lag ≈ 6 cycles (pad_data_q + BRAM read + 3 tap shifts).
+  //   So first valid window center at cycle W+3+6 = W+9.
+  //   Output = IMG_H × IMG_W = TOTAL pixels.
+  localparam TOTAL = IMG_H * IMG_W;
+  localparam T_START = PW + 3;       // = IMG_W + 5
+  logic started;
+  logic [15:0] frame_cycle;
+
+  always @(posedge clk, negedge rst_n) begin
+    if (!rst_n) begin
+      started <= 0;
+      frame_cycle <= 0;
+    end else begin
+      if (!started) begin
+        if (s_axis_tvalid)
+          started <= 1;
+      end else begin
+        frame_cycle <= frame_cycle + 1;
+      end
+    end
+  end
+
+  wire valid_win = started && (frame_cycle >= T_START) && (frame_cycle < T_START + TOTAL);
+
+  // Count outputs for tlast
+  logic [$clog2(TOTAL+1)-1:0] out_cnt;
+  always @(posedge clk, negedge rst_n) begin
+    if (!rst_n) out_cnt <= 0;
+    else if (m_axis_tvalid && m_axis_tready) out_cnt <= out_cnt + 1;
+  end
+  localparam PIPELINE_DEPTH = 4;
+  logic [PIPELINE_DEPTH:0] valid_pipe;
 
   always @(posedge clk, negedge rst_n) begin
     if (!rst_n)
       valid_pipe <= 0;
     else begin
-      valid_pipe[0] <= input_valid && row_cnt >= 1 && col_cnt >= 1;
+      valid_pipe[0] <= valid_win;
       for (int i = 0; i < PIPELINE_DEPTH; i++)
         valid_pipe[i+1] <= valid_pipe[i];
     end
   end
 
-  // Assemble output pixel
+  // Output assembly with backpressure
   always @(posedge clk, negedge rst_n) begin
     if (!rst_n) begin
       m_axis_tdata  <= 0;
@@ -312,13 +335,12 @@ module depthwise_conv3x3_sv #(
       m_axis_tvalid <= valid_pipe[PIPELINE_DEPTH] && (!m_axis_tvalid || m_axis_tready);
       if (!m_axis_tvalid || m_axis_tready) begin
         for (int c = 0; c < CHANNELS; c++)
-          m_axis_tdata[c*DATA_WIDTH+:DATA_WIDTH] <= result[c];
-        m_axis_tlast <= valid_pipe[PIPELINE_DEPTH] && (row_cnt == IMG_H - 1) && (col_cnt == IMG_W - 1);
+          m_axis_tdata[c*DATA_WIDTH+:DATA_WIDTH] <= res[c];
+        m_axis_tlast <= valid_pipe[PIPELINE_DEPTH] && (out_cnt == TOTAL - 2) && m_axis_tvalid && m_axis_tready;
       end
     end
   end
 
-  // Back-pressure: stall input when output pipeline is full
-  assign s_axis_tready = rst_n && (!m_axis_tvalid || m_axis_tready);
+  // (declared above)
 
 endmodule
