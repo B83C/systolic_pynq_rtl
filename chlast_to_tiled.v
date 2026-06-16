@@ -47,6 +47,7 @@ module chlast_to_tiled #(
       .MAX_REPLAY_CNT(MAX_REPLAY_CNT)
   ) impl (
       .clk(clk),
+      .rst_n(rst_n),
       .s_axis_tdata(s_axis_tdata),
       .s_axis_tvalid(s_axis_tvalid),
       .s_axis_tready(s_axis_tready),
