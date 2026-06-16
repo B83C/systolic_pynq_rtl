@@ -152,17 +152,24 @@ module sa_wrapper_axi_ctrl_sv #(
       end
 
       LOAD_B: begin
-        if (c_load_pending &&
-          ((input_pointer_at_first_row && !operate)
-          || (input_pointer_at_last_row && operate))) begin
+        if (c_load_pending) begin
           state_nxt = LOAD_C;
-        end else if (a_load_pending &&
-          ((input_pointer_at_first_row && !operate)
-          || (input_pointer_at_last_row && operate))) begin
+        end else if (a_load_pending) begin
           state_nxt = LOAD_A;
         end else begin
           state_nxt = LOAD_B;
         end
+        // if (c_load_pending &&
+        //   ((input_pointer_at_first_row && !operate)
+        //   || (input_pointer_at_last_row && operate))) begin
+        //   state_nxt = LOAD_C;
+        // end else if (a_load_pending &&
+        //   ((input_pointer_at_first_row && !operate)
+        //   || (input_pointer_at_last_row && operate))) begin
+        //   state_nxt = LOAD_A;
+        // end else begin
+        //   state_nxt = LOAD_B;
+        // end
       end
     endcase
   end
