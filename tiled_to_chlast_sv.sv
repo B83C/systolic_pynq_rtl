@@ -59,11 +59,14 @@ module tiled_to_chlast_sv #(
   logic [CH_PER_BEAT*DATA_WIDTH-1:0] buffer[2][OUT_COL][CH_BLOCKS];
 
   // cfg_channels is the live AXI reg; cfg_channels_q is the shadow used by
-  // the FSM.  The shadow updates only when state is OUT_IDLE, so a mid-frame
-  // AXI write cannot glitch ch_blocks_max / out_ch_last / m_axis_tdata.
-  logic [CFG_CH_W-1:0] cfg_channels;
-  logic [CFG_CH_W-1:0] cfg_channels_q;
-  wire [CFG_CH_W-1:0] ch_blocks_max = cfg_channels_q >> CH_PER_BEAT_LOG2;
+  // the FSM.  cfg_ch_block_mask_q is a one-hot bit at position
+  // (ch_blocks_max - 1), derived from cfg_channels_q once on AXI write.
+  // The FSM uses cfg_ch_block_mask_q (single-LUT mask lookup) for
+  // out_ch_last, avoiding a runtime subtractor+comparator that limited
+  // timing closure.
+  logic [CFG_CH_W-1:0]  cfg_channels;
+  logic [CFG_CH_W-1:0]  cfg_channels_q;
+  logic [CH_BLOCKS-1:0] cfg_ch_block_mask_q;
 
   wire axil_wr_en = s_axil_awvalid && s_axil_wvalid && !s_axil_bvalid;
   wire axil_rd_en = s_axil_arvalid && !s_axil_rvalid;
@@ -90,7 +93,7 @@ module tiled_to_chlast_sv #(
   wire  [  CHBLK_BITS-1:0] out_ch = out_ch_cnt;
 
   wire                     in_last = in_cnt == cfg_channels - 1;
-  wire                     out_ch_last = out_ch_cnt == ch_blocks_max - 1;
+  wire                          out_ch_last = cfg_ch_block_mask_q[out_ch_cnt];
   wire                     out_last = (out_col_cnt == OUT_COL - 1) && out_ch_last;
 
   logic pending, pending_has_tlast, output_has_tlast;
@@ -119,12 +122,13 @@ module tiled_to_chlast_sv #(
   // output counters + AXI-Lite config
   always @(posedge clk, negedge rst_n) begin
     if (!rst_n) begin
-      cfg_channels   <= MAX_CHANNELS;
-      cfg_channels_q <= MAX_CHANNELS;
-      out_col_cnt    <= 0;
-      out_ch_cnt     <= 0;
-      bypass_r       <= 0;
-      s_axil_bvalid  <= 0;
+      cfg_channels         <= MAX_CHANNELS;
+      cfg_channels_q       <= MAX_CHANNELS;
+      cfg_ch_block_mask_q  <= {CH_BLOCKS{1'b1}};
+      out_col_cnt          <= 0;
+      out_ch_cnt           <= 0;
+      bypass_r             <= 0;
+      s_axil_bvalid        <= 0;
       s_axil_rvalid  <= 0;
       s_axil_rdata   <= 0;
     end else begin
@@ -139,9 +143,15 @@ module tiled_to_chlast_sv #(
         s_axil_bvalid <= 0;
       end
 
-      // Shadow reg: latch cfg_channels only when state is OUT_IDLE.
-      // Prevents mid-frame glitches to ch_blocks_max and out_ch_last.
-      if (state == OUT_IDLE) cfg_channels_q <= cfg_channels;
+      // Shadow reg: latch cfg_channels and compute the one-hot mask
+      // only when state is OUT_IDLE.  The mask is the runtime value,
+      // but computing it once per AXI write (not every cycle) keeps it
+      // off the FSM's critical timing path.  out_ch_last uses the mask
+      // as a single LUT: cfg_ch_block_mask_q[out_ch_cnt].
+      if (state == OUT_IDLE) begin
+        cfg_channels_q      <= cfg_channels;
+        cfg_ch_block_mask_q <= CH_BLOCKS'(1) << ((cfg_channels >> CH_PER_BEAT_LOG2) - 1);
+      end
 
       if (axil_rd_en) begin
         case (s_axil_araddr)
