@@ -73,7 +73,7 @@ module chlast_to_tiled_sv #(
   logic [CFG_CH_W-1:0]     cfg_channels_q;
   logic [REPLAY_CNT_W-1:0] repeat_cnt;
   logic [REPLAY_CNT_W-1:0] repeat_cnt_q;
-  wire  [CFG_CH_W-1:0]     ch_blocks_max = cfg_channels_q >> CH_PER_BEAT_LOG2;
+  wire  [CFG_CH_W-1:0]     ch_blocks_max = (cfg_channels_q + CH_PER_BEAT - 1) >> CH_PER_BEAT_LOG2;
 
   wire axil_wr_en = s_axil_awvalid && s_axil_wvalid && !s_axil_bvalid;
   wire axil_rd_en = s_axil_arvalid && !s_axil_rvalid;

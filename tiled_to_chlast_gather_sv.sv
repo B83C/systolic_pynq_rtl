@@ -74,9 +74,9 @@ module tiled_to_chlast_gather_sv #(
   // Main BRAM — 2 banks × OUT_COL × CH_BLOCKS entries, flattened to 2D.
   // Full-word writes only (no byte-level enables).
 `ifndef FORCE_LUTRAM
-  (* ram_style = "block" *) logic [CH_PER_BEAT*DATA_WIDTH-1:0] buffer[2 * OUT_COL][CH_BLOCKS];
+  (* ram_style = "block" *) logic [CH_PER_BEAT*DATA_WIDTH-1:0] buffer[2 * OUT_COL * CH_BLOCKS];
 `else
-  (* ram_style = "distributed" *) logic [CH_PER_BEAT*DATA_WIDTH-1:0] buffer[2 * OUT_COL][CH_BLOCKS];
+  (* ram_style = "distributed" *) logic [CH_PER_BEAT*DATA_WIDTH-1:0] buffer[2 * OUT_COL * CH_BLOCKS];
 `endif
 
   // Row-gather LUT-RAM — ping-pong between 2 sets.
@@ -182,7 +182,7 @@ module tiled_to_chlast_gather_sv #(
   // Each cycle writes one packed word (full 64-bit write to BRAM, 1 WE).
   always @(posedge clk) begin
     if (gstate == FLUSH) begin
-      buffer[flush_sel * OUT_COL + flush_cnt][gather_ch_blk] <=
+      buffer[(flush_sel * OUT_COL + flush_cnt) * CH_BLOCKS + gather_ch_blk] <=
         gather[gather_set - 1][flush_cnt];
     end
   end
@@ -326,7 +326,7 @@ module tiled_to_chlast_gather_sv #(
   end
 
   // ── Output pipeline stage ───────────────────────────────────────────
-  wire [CH_PER_BEAT*DATA_WIDTH-1:0] tdata_pre = buffer[out_buf_sel * OUT_COL + out_col_cnt][out_ch_cnt];
+  wire [CH_PER_BEAT*DATA_WIDTH-1:0] tdata_pre = buffer[(out_buf_sel * OUT_COL + out_col_cnt) * CH_BLOCKS + out_ch_cnt];
   wire tvalid_pre = rst_n && state == OUT_REPLAYING;
   wire tlast_pre = out_last && output_has_tlast;
   wire out_pipe_adv_comb = !bypass_r && (!m_axis_tvalid_r || m_axis_tready);
