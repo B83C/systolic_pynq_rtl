@@ -5,13 +5,7 @@ module sa_wrapper_axi_ctrl #(
     parameter unsigned ACCUM_WIDTH    = 32,
     parameter unsigned SIZE           = 4,
     parameter unsigned DATA_WIDTH_IN  = 8,
-    parameter unsigned DATA_WIDTH_OUT = 8,
-    parameter unsigned MAX_MUL_Q      = 65535,
-    parameter unsigned MAX_SHIFT      = 31,
-    parameter integer  MAX_ZP_OUT     = 127,
-    parameter integer  MIN_ZP_OUT     = -128,
-    parameter unsigned MAX_OUT_CH     = 127,
-    parameter unsigned MAX_REPEAT_CNT = 31
+    parameter unsigned DATA_WIDTH_OUT = 8
 ) (
     input wire clk,
     input wire rst_n,
@@ -48,19 +42,7 @@ module sa_wrapper_axi_ctrl #(
     input  wire        s_axil_rready,
 
     output wire a_bypass,
-    output wire axis_bypass,
-    // output wire idle,
-
-    output wire                                       mul_q_wen,
-    output wire [        $clog2(MAX_MUL_Q+1)-1:0]     mul_q_wdata,
-    output wire                                       shift_wen,
-    output wire [        $clog2(MAX_SHIFT+1)-1:0]     shift_wdata,
-    output wire                                       zp_out_wen,
-    output wire [$clog2(MAX_ZP_OUT-MIN_ZP_OUT+1)-1:0] zp_out_wdata,
-    output wire                                       cfg_channels_wen,
-    output wire [       $clog2(MAX_OUT_CH+1)-1:0]     cfg_channels_wdata,
-    output wire                                       repeat_cnt_wen,
-    output wire [    $clog2(MAX_REPEAT_CNT+1)-1:0]    repeat_cnt_wdata
+    output wire axis_bypass
 );
 
   sa_wrapper_axi_ctrl_sv #(
@@ -69,13 +51,7 @@ module sa_wrapper_axi_ctrl #(
       .C_DEPTH(C_DEPTH),
       .ACCUM_WIDTH(ACCUM_WIDTH),
       .DATA_WIDTH_IN(DATA_WIDTH_IN),
-      .DATA_WIDTH_OUT(DATA_WIDTH_OUT),
-      .MAX_MUL_Q(MAX_MUL_Q),
-      .MAX_SHIFT(MAX_SHIFT),
-      .MAX_ZP_OUT(MAX_ZP_OUT),
-      .MIN_ZP_OUT(MIN_ZP_OUT),
-      .MAX_OUT_CH(MAX_OUT_CH),
-      .MAX_REPEAT_CNT(MAX_REPEAT_CNT)
+      .DATA_WIDTH_OUT(DATA_WIDTH_OUT)
   ) impl (
       .clk            (clk),
       .rst_n          (rst_n),
@@ -104,17 +80,7 @@ module sa_wrapper_axi_ctrl #(
       .s_axil_rvalid  (s_axil_rvalid),
       .s_axil_rready  (s_axil_rready),
       .a_bypass       (a_bypass),
-      .axis_bypass    (axis_bypass),
-      .mul_q_wen      (mul_q_wen),
-      .mul_q_wdata    (mul_q_wdata),
-      .shift_wen      (shift_wen),
-      .shift_wdata    (shift_wdata),
-      .zp_out_wen     (zp_out_wen),
-      .zp_out_wdata   (zp_out_wdata),
-      .cfg_channels_wen  (cfg_channels_wen),
-      .cfg_channels_wdata(cfg_channels_wdata),
-      .repeat_cnt_wen    (repeat_cnt_wen),
-      .repeat_cnt_wdata  (repeat_cnt_wdata)
+      .axis_bypass    (axis_bypass)
   );
 
 endmodule

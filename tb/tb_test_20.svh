@@ -1,22 +1,6 @@
 `ifndef TB_TEST_20_SVH
 `define TB_TEST_20_SVH
 
-// Latched copies of SA wrapper's runtime config (driven by wen/wdata pulses)
-logic [15:0] cur_mul_q;
-logic [ 4:0] cur_shift;
-logic [ 7:0] cur_zp_out;
-always @(posedge clk or negedge rst_n) begin
-    if (!rst_n) begin
-        cur_mul_q  <= 0;
-        cur_shift  <= 0;
-        cur_zp_out <= 0;
-    end else begin
-        if (mul_q_wen)  cur_mul_q  <= mul_q_wdata;
-        if (shift_wen)  cur_shift  <= shift_wdata;
-        if (zp_out_wen) cur_zp_out <= zp_out_wdata;
-    end
-end
-
 // Compute expected quantized output given raw and quant params
 function int quant_exp(input int raw, input int mq, input int sh, input int zp);
     automatic int prod = raw * mq;
@@ -46,9 +30,9 @@ task test_20_quantizer_scale();
     errors = 0; out_count = 0; q_out_count = 0;
 
     axil_write(REG_A_LOOP_START, 0);
-    axil_write(REG_MUL_Q, 2);
-    axil_write(REG_SHIFT, 0);
-    axil_write(REG_ZP_OUT, 0);
+    qaxil_write(REG_Q_MUL_Q,  2);
+    qaxil_write(REG_Q_SHIFT,  0);
+    qaxil_write(REG_Q_ZP_OUT, 0);
     load_A();
     stream_mat(B1, 1);
     wait_output_done();
@@ -67,9 +51,9 @@ task test_21_quantizer_shift();
     errors = 0; out_count = 0; q_out_count = 0;
 
     axil_write(REG_A_LOOP_START, 0);
-    axil_write(REG_MUL_Q, 1);
-    axil_write(REG_SHIFT, 1);
-    axil_write(REG_ZP_OUT, 0);
+    qaxil_write(REG_Q_MUL_Q,  1);
+    qaxil_write(REG_Q_SHIFT,  1);
+    qaxil_write(REG_Q_ZP_OUT, 0);
     load_A();
     stream_mat(B1, 1);
     wait_output_done();
@@ -88,9 +72,9 @@ task test_22_quantizer_zp();
     errors = 0; out_count = 0; q_out_count = 0;
 
     axil_write(REG_A_LOOP_START, 0);
-    axil_write(REG_MUL_Q, 1);
-    axil_write(REG_SHIFT, 0);
-    axil_write(REG_ZP_OUT, 10);
+    qaxil_write(REG_Q_MUL_Q,  1);
+    qaxil_write(REG_Q_SHIFT,  0);
+    qaxil_write(REG_Q_ZP_OUT, 10);
     load_A();
     stream_mat(B1, 1);
     wait_output_done();
@@ -109,9 +93,9 @@ task test_23_quantizer_negative();
     errors = 0; out_count = 0; q_out_count = 0;
 
     axil_write(REG_A_LOOP_START, 0);
-    axil_write(REG_MUL_Q, 1);
-    axil_write(REG_SHIFT, 0);
-    axil_write(REG_ZP_OUT, 0);
+    qaxil_write(REG_Q_MUL_Q,  1);
+    qaxil_write(REG_Q_SHIFT,  0);
+    qaxil_write(REG_Q_ZP_OUT, 0);
     load_A();
     stream_mat(Bneg, 1);
     wait_output_done();
@@ -134,9 +118,9 @@ task test_24_quantizer_mixed();
     errors = 0; out_count = 0; q_out_count = 0;
 
     axil_write(REG_A_LOOP_START, 0);
-    axil_write(REG_MUL_Q, 3);
-    axil_write(REG_SHIFT, 2);
-    axil_write(REG_ZP_OUT, 5);
+    qaxil_write(REG_Q_MUL_Q,  3);
+    qaxil_write(REG_Q_SHIFT,  2);
+    qaxil_write(REG_Q_ZP_OUT, 5);
     load_A();
     stream_mat(B1, 1);
     wait_output_done();

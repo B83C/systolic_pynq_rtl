@@ -69,6 +69,21 @@ task axil_write(input [5:0] addr, input [31:0] data);
   s_axil_bready = 0;
 endtask
 
+task qaxil_write(input [2:0] addr, input [31:0] data);
+  @(posedge clk);
+  q_awvalid = 1;
+  q_awaddr  = addr;
+  q_wdata   = data;
+  q_wvalid  = 1;
+  @(posedge clk);
+  while (!q_bvalid) @(posedge clk);
+  q_awvalid = 0;
+  q_wvalid  = 0;
+  q_bready  = 1;
+  @(posedge clk);
+  q_bready = 0;
+endtask
+
 task stream_mat(input int mat[4][4], input bit last_set = 1);
   automatic logic [AXI_IN_W-1:0] row_data;
   for (int i = 0; i < SIZE; i++) begin

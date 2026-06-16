@@ -23,11 +23,26 @@ module chlast_to_tiled_sv #(
     input  logic                          m_axis_tready,
     output logic                          m_axis_tlast,
 
-    input logic                            bypass_i,
-    input logic                            cfg_channels_wen,
-    input logic [$clog2(MAX_CHANNELS+1)-1:0]   cfg_channels_wdata,
-    input logic                            repeat_cnt_wen,
-    input logic [$clog2(MAX_REPLAY_CNT+1)-1:0] repeat_cnt_wdata
+    input logic bypass_i,
+
+    // AXI4-Lite: config (REG_CFG_CHANNELS, REG_REPEAT_CNT)
+    input  wire        s_axil_awvalid,
+    output wire        s_axil_awready,
+    input  wire [2:0]  s_axil_awaddr,
+    input  wire [31:0] s_axil_wdata,
+    input  wire        s_axil_wvalid,
+    output wire        s_axil_wready,
+    output wire [ 1:0] s_axil_bresp,
+    output reg         s_axil_bvalid,
+    input  wire        s_axil_bready,
+
+    input  wire        s_axil_arvalid,
+    output wire        s_axil_arready,
+    input  wire [2:0]  s_axil_araddr,
+    output reg  [31:0] s_axil_rdata,
+    output wire [ 1:0] s_axil_rresp,
+    output reg         s_axil_rvalid,
+    input  wire        s_axil_rready
 );
 
   initial assert((MAX_CHANNELS & (MAX_CHANNELS - 1)) == 0)
@@ -44,12 +59,22 @@ module chlast_to_tiled_sv #(
   localparam OUT_COL_BITS = $clog2(OUT_COL);
   localparam CFG_CH_W     = $clog2(MAX_CHANNELS + 1);
   localparam REPLAY_CNT_W = $clog2(MAX_REPLAY_CNT + 1);
+  localparam REG_CT_CH  = 3'h0;
+  localparam REG_CT_RPT = 3'h4;
 
   logic [CH_PER_BEAT*DATA_WIDTH-1:0] buffer[2][OUT_COL][CH_BLOCKS];
 
   logic [CFG_CH_W-1:0]     cfg_channels;
   logic [REPLAY_CNT_W-1:0] repeat_cnt;
   wire  [CFG_CH_W-1:0]     ch_blocks_max = cfg_channels >> CH_PER_BEAT_LOG2;
+
+  wire axil_wr_en = s_axil_awvalid && s_axil_wvalid && !s_axil_bvalid;
+  wire axil_rd_en = s_axil_arvalid && !s_axil_rvalid;
+  assign s_axil_awready = axil_wr_en;
+  assign s_axil_wready  = axil_wr_en;
+  assign s_axil_bresp   = 2'b00;
+  assign s_axil_arready = axil_rd_en;
+  assign s_axil_rresp   = 2'b00;
 
   typedef enum {
     OUT_REPLAYING,
@@ -103,9 +128,32 @@ module chlast_to_tiled_sv #(
       repeat_cnt    <= 1;
       out_buf_cntr  <= 0;
       out_replay_cnt <= repeat_cnt - 1;
+      s_axil_bvalid <= 0;
+      s_axil_rvalid <= 0;
+      s_axil_rdata  <= 0;
     end else begin
-      if (cfg_channels_wen) cfg_channels <= cfg_channels_wdata;
-      if (repeat_cnt_wen)   repeat_cnt   <= repeat_cnt_wdata;
+      if (axil_wr_en) begin
+        case (s_axil_awaddr)
+          REG_CT_CH:  cfg_channels <= s_axil_wdata[CFG_CH_W-1:0];
+          REG_CT_RPT: repeat_cnt   <= s_axil_wdata[REPLAY_CNT_W-1:0];
+          default: ;
+        endcase
+        s_axil_bvalid <= 1;
+      end else if (s_axil_bready) begin
+        s_axil_bvalid <= 0;
+      end
+
+      if (axil_rd_en) begin
+        case (s_axil_araddr)
+          REG_CT_CH:  s_axil_rdata <= {{32-CFG_CH_W{1'b0}},     cfg_channels};
+          REG_CT_RPT: s_axil_rdata <= {{32-REPLAY_CNT_W{1'b0}}, repeat_cnt};
+          default:    s_axil_rdata <= 0;
+        endcase
+        s_axil_rvalid <= 1;
+      end else if (s_axil_rready) begin
+        s_axil_rvalid <= 0;
+      end
+
       if (bypass_i) begin
         out_buf_cntr   <= 0;
         out_replay_cnt <= repeat_cnt - 1;

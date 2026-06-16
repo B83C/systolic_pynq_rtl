@@ -1,7 +1,8 @@
 `timescale 1ns / 1ps
 
-// Quantizer:  q_out = clamp(((acc * mul_q) >>> shift) + zp_out, -128, 127)
+// Quantizer:  q_out = clamp(((acc * mul_q) >>> shift) + zp_out, MIN, MAX)
 // 3 pipeline stages: S0 = input reg, S1 = DSP+shift → reg, S2 = add_zp+clamp → reg
+// AXI-Lite slave: REG_MUL_Q, REG_SHIFT, REG_ZP_OUT (3-bit address space)
 
 module quantizer #(
     parameter unsigned SIZE           = 4,
@@ -17,17 +18,30 @@ module quantizer #(
     localparam unsigned ZP_OUT_W      = $clog2(MAX_ZP_OUT - MIN_ZP_OUT + 1),
     localparam integer  ZP_OUT_CLAMP_HI = MAX_ZP_OUT,
     localparam integer  ZP_OUT_CLAMP_LO = MIN_ZP_OUT,
-    localparam integer  ZP_OUT_CLAMP_W  = MAX_ZP_OUT - MIN_ZP_OUT + 1
+    localparam integer  ZP_OUT_CLAMP_W  = MAX_ZP_OUT - MIN_ZP_OUT + 1,
+    localparam unsigned AXI_ADDR_W    = 3
 ) (
     input  logic clk,
     input  logic rst_n,
 
-    input  logic                       mul_q_wen,
-    input  logic [MUL_Q_W-1:0]         mul_q_wdata,
-    input  logic                       shift_wen,
-    input  logic [SHIFT_W-1:0]         shift_wdata,
-    input  logic                       zp_out_wen,
-    input  logic [ZP_OUT_W-1:0]        zp_out_wdata,
+    // AXI4-Lite: config / status
+    input  wire                  s_axil_awvalid,
+    output wire                  s_axil_awready,
+    input  wire [AXI_ADDR_W-1:0] s_axil_awaddr,
+    input  wire [          31:0] s_axil_wdata,
+    input  wire                  s_axil_wvalid,
+    output wire                  s_axil_wready,
+    output wire [           1:0] s_axil_bresp,
+    output reg                   s_axil_bvalid,
+    input  wire                  s_axil_bready,
+
+    input  wire                  s_axil_arvalid,
+    output wire                  s_axil_arready,
+    input  wire [AXI_ADDR_W-1:0] s_axil_araddr,
+    output reg  [          31:0] s_axil_rdata,
+    output wire [           1:0] s_axil_rresp,
+    output reg                   s_axil_rvalid,
+    input  wire                  s_axil_rready,
 
     input  logic [SIZE*DATA_WIDTH_IN -1:0] s_axis_tdata,
     input  logic                           s_axis_tvalid,
@@ -40,6 +54,11 @@ module quantizer #(
     output logic                           m_axis_tlast
 );
 
+    // AXI-Lite register offsets
+    localparam REG_Q_MUL_Q  = 3'h0;
+    localparam REG_Q_SHIFT  = 3'h4;
+    localparam REG_Q_ZP_OUT = 3'h8;
+
     wire signed [ACCUM_WIDTH-1:0] acc[SIZE];
     generate
         for (genvar i = 0; i < SIZE; i++) begin : gen_acc_slice
@@ -50,15 +69,52 @@ module quantizer #(
     logic [MUL_Q_W-1:0]  mul_q;
     logic [SHIFT_W-1:0]  shift;
     logic [ZP_OUT_W-1:0] zp_out;
+
+    wire axil_wr_en = s_axil_awvalid && s_axil_wvalid && !s_axil_bvalid;
+    wire axil_rd_en = s_axil_arvalid && !s_axil_rvalid;
+
+    assign s_axil_awready = axil_wr_en;
+    assign s_axil_wready  = axil_wr_en;
+    assign s_axil_bresp   = 2'b00;
+    assign s_axil_arready = axil_rd_en;
+    assign s_axil_rresp   = 2'b00;
+
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            mul_q  <= 0;
-            shift  <= 0;
-            zp_out <= 0;
+            mul_q          <= 0;
+            shift          <= 0;
+            zp_out         <= 0;
+            s_axil_bvalid  <= 0;
+            s_axil_rvalid  <= 0;
+            s_axil_rdata   <= 0;
         end else begin
-            if (mul_q_wen)  mul_q  <= mul_q_wdata;
-            if (shift_wen)  shift  <= shift_wdata;
-            if (zp_out_wen) zp_out <= zp_out_wdata;
+            if (axil_wr_en) begin
+                /* verilator lint_off CASEOVERLAP */
+                case (s_axil_awaddr)
+                    REG_Q_MUL_Q:  mul_q  <= s_axil_wdata[MUL_Q_W-1:0];
+                    REG_Q_SHIFT:  shift  <= s_axil_wdata[SHIFT_W-1:0];
+                    REG_Q_ZP_OUT: zp_out <= s_axil_wdata[ZP_OUT_W-1:0];
+                    default: ;
+                endcase
+                /* verilator lint_on CASEOVERLAP */
+                s_axil_bvalid <= 1;
+            end else if (s_axil_bready) begin
+                s_axil_bvalid <= 0;
+            end
+
+            if (axil_rd_en) begin
+                /* verilator lint_off CASEOVERLAP */
+                case (s_axil_araddr)
+                    REG_Q_MUL_Q:  s_axil_rdata <= {{32-MUL_Q_W{1'b0}},  mul_q};
+                    REG_Q_SHIFT:  s_axil_rdata <= {{32-SHIFT_W{1'b0}},  shift};
+                    REG_Q_ZP_OUT: s_axil_rdata <= {{32-ZP_OUT_W{1'b0}}, zp_out};
+                    default:      s_axil_rdata <= 0;
+                endcase
+                /* verilator lint_on CASEOVERLAP */
+                s_axil_rvalid <= 1;
+            end else if (s_axil_rready) begin
+                s_axil_rvalid <= 0;
+            end
         end
     end
 

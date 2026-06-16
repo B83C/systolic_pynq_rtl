@@ -22,9 +22,26 @@ module tiled_to_chlast_sv #(
     input  logic                              m_axis_tready,
     output logic                              m_axis_tlast,
 
-    input logic                         bypass_i,
-    input logic                         cfg_channels_wen,
-    input logic [$clog2(MAX_CHANNELS+1)-1:0] cfg_channels_wdata
+    input logic bypass_i,
+
+    // AXI4-Lite: config (only REG_CFG_CHANNELS)
+    input  wire        s_axil_awvalid,
+    output wire        s_axil_awready,
+    input  wire [2:0]  s_axil_awaddr,
+    input  wire [31:0] s_axil_wdata,
+    input  wire        s_axil_wvalid,
+    output wire        s_axil_wready,
+    output wire [ 1:0] s_axil_bresp,
+    output reg         s_axil_bvalid,
+    input  wire        s_axil_bready,
+
+    input  wire        s_axil_arvalid,
+    output wire        s_axil_arready,
+    input  wire [2:0]  s_axil_araddr,
+    output reg  [31:0] s_axil_rdata,
+    output wire [ 1:0] s_axil_rresp,
+    output reg         s_axil_rvalid,
+    input  wire        s_axil_rready
 );
 
   initial assert((MAX_CHANNELS & (MAX_CHANNELS - 1)) == 0)
@@ -36,11 +53,20 @@ module tiled_to_chlast_sv #(
   localparam SP_BITS = (CH_PER_BEAT > 2) ? $clog2(CH_PER_BEAT) : 1;
   localparam OUT_COL_BITS = $clog2(OUT_COL);
   localparam CFG_CH_W = $clog2(MAX_CHANNELS + 1);
+  localparam REG_TC_CH = 3'h0;
 
   logic [CH_PER_BEAT*DATA_WIDTH-1:0] buffer[2][OUT_COL][CH_BLOCKS];
 
   logic [CFG_CH_W-1:0] cfg_channels;
   wire  [CFG_CH_W-1:0] ch_blocks_max = cfg_channels >> CH_PER_BEAT_LOG2;
+
+  wire axil_wr_en = s_axil_awvalid && s_axil_wvalid && !s_axil_bvalid;
+  wire axil_rd_en = s_axil_arvalid && !s_axil_rvalid;
+  assign s_axil_awready = axil_wr_en;
+  assign s_axil_wready  = axil_wr_en;
+  assign s_axil_bresp   = 2'b00;
+  assign s_axil_arready = axil_rd_en;
+  assign s_axil_rresp   = 2'b00;
 
   typedef enum {
     OUT_REPLAYING,
@@ -81,14 +107,30 @@ module tiled_to_chlast_sv #(
     else state <= state_nxt;
   end
 
-  // output counters
+  // output counters + AXI-Lite config
   always @(posedge clk, negedge rst_n) begin
     if (!rst_n) begin
       cfg_channels <= MAX_CHANNELS;
-      out_col_cnt <= 0;
-      out_ch_cnt  <= 0;
+      out_col_cnt  <= 0;
+      out_ch_cnt   <= 0;
+      s_axil_bvalid <= 0;
+      s_axil_rvalid <= 0;
+      s_axil_rdata  <= 0;
     end else begin
-      if (cfg_channels_wen) cfg_channels <= cfg_channels_wdata;
+      if (axil_wr_en) begin
+        if (s_axil_awaddr == REG_TC_CH) cfg_channels <= s_axil_wdata[CFG_CH_W-1:0];
+        s_axil_bvalid <= 1;
+      end else if (s_axil_bready) begin
+        s_axil_bvalid <= 0;
+      end
+
+      if (axil_rd_en) begin
+        s_axil_rdata <= (s_axil_araddr == REG_TC_CH) ? {{32-CFG_CH_W{1'b0}}, cfg_channels} : 0;
+        s_axil_rvalid <= 1;
+      end else if (s_axil_rready) begin
+        s_axil_rvalid <= 0;
+      end
+
       if (state == OUT_REPLAYING && m_axis_tready) begin
         if (out_ch_last) begin
           out_ch_cnt  <= 0;

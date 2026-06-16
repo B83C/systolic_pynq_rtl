@@ -19,11 +19,26 @@ module chlast_to_tiled #(
     input  wire                          m_axis_tready,
     output wire                          m_axis_tlast,
 
-    input wire                            bypass_i,
-    input wire                            cfg_channels_wen,
-    input wire [$clog2(MAX_CHANNELS+1)-1:0]   cfg_channels_wdata,
-    input wire                            repeat_cnt_wen,
-    input wire [$clog2(MAX_REPLAY_CNT+1)-1:0] repeat_cnt_wdata
+    input wire bypass_i,
+
+    // AXI4-Lite: config (REG_CFG_CHANNELS, REG_REPEAT_CNT)
+    input  wire        s_axil_awvalid,
+    output wire        s_axil_awready,
+    input  wire [2:0]  s_axil_awaddr,
+    input  wire [31:0] s_axil_wdata,
+    input  wire        s_axil_wvalid,
+    output wire        s_axil_wready,
+    output wire [ 1:0] s_axil_bresp,
+    output wire        s_axil_bvalid,
+    input  wire        s_axil_bready,
+
+    input  wire        s_axil_arvalid,
+    output wire        s_axil_arready,
+    input  wire [2:0]  s_axil_araddr,
+    output wire [31:0] s_axil_rdata,
+    output wire [ 1:0] s_axil_rresp,
+    output wire        s_axil_rvalid,
+    input  wire        s_axil_rready
 );
 
   chlast_to_tiled_sv #(
@@ -44,10 +59,22 @@ module chlast_to_tiled #(
       .m_axis_tlast(m_axis_tlast),
 
       .bypass_i(bypass_i),
-      .cfg_channels_wen  (cfg_channels_wen),
-      .cfg_channels_wdata(cfg_channels_wdata),
-      .repeat_cnt_wen    (repeat_cnt_wen),
-      .repeat_cnt_wdata  (repeat_cnt_wdata)
+      .s_axil_awvalid(s_axil_awvalid),
+      .s_axil_awready(s_axil_awready),
+      .s_axil_awaddr (s_axil_awaddr),
+      .s_axil_wdata  (s_axil_wdata),
+      .s_axil_wvalid (s_axil_wvalid),
+      .s_axil_wready (s_axil_wready),
+      .s_axil_bresp  (s_axil_bresp),
+      .s_axil_bvalid (s_axil_bvalid),
+      .s_axil_bready (s_axil_bready),
+      .s_axil_arvalid(s_axil_arvalid),
+      .s_axil_arready(s_axil_arready),
+      .s_axil_araddr (s_axil_araddr),
+      .s_axil_rdata  (s_axil_rdata),
+      .s_axil_rresp  (s_axil_rresp),
+      .s_axil_rvalid (s_axil_rvalid),
+      .s_axil_rready (s_axil_rready)
   );
 
 endmodule

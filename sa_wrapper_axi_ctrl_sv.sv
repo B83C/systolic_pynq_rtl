@@ -8,18 +8,7 @@ module sa_wrapper_axi_ctrl_sv #(
     parameter  unsigned SIZE           = 4,
     parameter  unsigned DATA_WIDTH_IN  = 8,
     parameter  unsigned DATA_WIDTH_OUT = 32,
-    parameter  unsigned MAX_MUL_Q      = 65535,
-    parameter  unsigned MAX_SHIFT      = 31,
-    parameter  integer  MAX_ZP_OUT     = 127,
-    parameter  integer  MIN_ZP_OUT     = -128,
-    parameter  unsigned MAX_OUT_CH     = 127,
-    parameter  unsigned MAX_REPEAT_CNT = 31,
-    localparam unsigned O_MUL_Q_W      = $clog2(MAX_MUL_Q + 1),
-    localparam unsigned O_SHIFT_W      = $clog2(MAX_SHIFT + 1),
-    localparam unsigned O_ZP_OUT_W     = $clog2(MAX_ZP_OUT - MIN_ZP_OUT + 1),
-    localparam unsigned O_ZP_IN_W      = 8,
-    localparam unsigned O_OUT_CH_W     = $clog2(MAX_OUT_CH + 1),
-    localparam unsigned O_REPEAT_CNT_W = $clog2(MAX_REPEAT_CNT + 1),
+    localparam unsigned ZP_IN_W        = 8,
     localparam unsigned AXI_IN_WIDTH   = SIZE * DATA_WIDTH_IN,
     localparam unsigned AXI_OUT_WIDTH  = SIZE * DATA_WIDTH_OUT,
     localparam unsigned AXI_ADDR_W     = 7
@@ -55,18 +44,7 @@ module sa_wrapper_axi_ctrl_sv #(
     output reg                   s_axil_rvalid,
     input  wire                  s_axil_rready,
 
-    output wire axis_bypass,
-
-    output wire                       mul_q_wen,
-    output wire [    O_MUL_Q_W-1:0]   mul_q_wdata,
-    output wire                       shift_wen,
-    output wire [    O_SHIFT_W-1:0]   shift_wdata,
-    output wire                       zp_out_wen,
-    output wire [   O_ZP_OUT_W-1:0]   zp_out_wdata,
-    output wire                       cfg_channels_wen,
-    output wire [   O_OUT_CH_W-1:0]   cfg_channels_wdata,
-    output wire                       repeat_cnt_wen,
-    output wire [O_REPEAT_CNT_W-1:0]  repeat_cnt_wdata
+    output wire axis_bypass
 );
 
   logic new_batch;
@@ -136,12 +114,7 @@ module sa_wrapper_axi_ctrl_sv #(
   wire [7:0] current_acc_count;
   reg a_load_pending;
   reg c_load_pending;
-  reg signed [O_ZP_IN_W-1:0] zp_in;
-  reg [O_MUL_Q_W-1:0] mul_q;
-  reg [O_SHIFT_W-1:0] shift;
-  reg signed [O_ZP_OUT_W-1:0] zp_out;
-  reg [O_OUT_CH_W-1:0] out_channels;
-  reg [O_REPEAT_CNT_W-1:0] repeat_cnt;
+  reg signed [ZP_IN_W-1:0] zp_in;
   reg soft_rst;
   reg axis_bypass_r;
   reg [A_RING_ADDR_W-1:0] a_loop_start;
@@ -225,11 +198,6 @@ module sa_wrapper_axi_ctrl_sv #(
       c_load_pending <= 0;
       axis_bypass_r  <= 0;
       zp_in          <= 0;
-      mul_q          <= 0;
-      shift          <= 0;
-      zp_out         <= 0;
-      out_channels   <= SIZE;
-      repeat_cnt     <= 1;
       s_axil_bvalid  <= 0;
       s_axil_rvalid  <= 0;
       s_axil_rdata   <= 0;
@@ -241,17 +209,12 @@ module sa_wrapper_axi_ctrl_sv #(
           REG_C_LOAD:       c_load_pending <= 1;
           REG_A_LOAD:       a_load_pending <= 1;
           REG_A_LOOP_START: a_loop_start <= s_axil_wdata[A_RING_ADDR_W-1:0];
-          REG_ZP_IN:        zp_in <= s_axil_wdata[O_ZP_IN_W-1:0];
-          REG_MUL_Q:        mul_q <= s_axil_wdata[O_MUL_Q_W-1:0];
-          REG_SHIFT:        shift <= s_axil_wdata[O_SHIFT_W-1:0];
-          REG_ZP_OUT:       zp_out <= s_axil_wdata[O_ZP_OUT_W-1:0];
+          REG_ZP_IN:        zp_in <= s_axil_wdata[ZP_IN_W-1:0];
           REG_A_LOOP_END:   a_loop_end <= s_axil_wdata[A_RING_ADDR_W-1:0];
           REG_C_LOOP_START: c_loop_start <= s_axil_wdata[C_RING_ADDR_W-1:0];
           REG_C_LOOP_END:   c_loop_end <= s_axil_wdata[C_RING_ADDR_W-1:0];
           REG_RST_INDEX:    ;  // handled below
           REG_AXIS_BYPASS:  axis_bypass_r <= s_axil_wdata[0];
-          REG_OUT_CH:       out_channels <= s_axil_wdata[O_OUT_CH_W-1:0];
-          REG_REPEAT_CNT:   repeat_cnt <= s_axil_wdata[O_REPEAT_CNT_W-1:0];
           default:          ;
         endcase
         s_axil_bvalid <= 1;
@@ -278,13 +241,8 @@ module sa_wrapper_axi_ctrl_sv #(
           REG_C_LOOP_START: s_axil_rdata <= {{32 - C_RING_ADDR_W{1'h0}}, c_loop_start};
           REG_C_LOOP_END:   s_axil_rdata <= {{32 - C_RING_ADDR_W{1'h0}}, c_loop_end};
           REG_SIZE:         s_axil_rdata <= SIZE;
-          REG_MUL_Q:        s_axil_rdata <= {{32 - O_MUL_Q_W{1'b0}}, mul_q};
-          REG_SHIFT:        s_axil_rdata <= {{32 - O_SHIFT_W{1'b0}}, shift};
-          REG_ZP_OUT:       s_axil_rdata <= {{32 - O_ZP_OUT_W{1'b0}}, zp_out};
-          REG_ZP_IN:        s_axil_rdata <= {{32 - O_ZP_IN_W{1'b0}}, zp_in};
+          REG_ZP_IN:        s_axil_rdata <= {{32 - ZP_IN_W{1'b0}}, zp_in};
           REG_AXIS_BYPASS:  s_axil_rdata <= {31'h0, axis_bypass_r};
-          REG_OUT_CH:       s_axil_rdata <= {{32 - O_OUT_CH_W{1'b0}}, out_channels};
-          REG_REPEAT_CNT:   s_axil_rdata <= {{32 - O_REPEAT_CNT_W{1'b0}}, repeat_cnt};
           default:          s_axil_rdata <= 32'h0;
         endcase
         s_axil_rvalid <= 1;
@@ -514,16 +472,6 @@ module sa_wrapper_axi_ctrl_sv #(
     end
   end
 
-  assign mul_q_wen         = axil_wr_en && (s_axil_awaddr == REG_MUL_Q);
-  assign mul_q_wdata       = s_axil_wdata[O_MUL_Q_W-1:0];
-  assign shift_wen         = axil_wr_en && (s_axil_awaddr == REG_SHIFT);
-  assign shift_wdata       = s_axil_wdata[O_SHIFT_W-1:0];
-  assign zp_out_wen        = axil_wr_en && (s_axil_awaddr == REG_ZP_OUT);
-  assign zp_out_wdata      = s_axil_wdata[O_ZP_OUT_W-1:0];
-  assign cfg_channels_wen  = axil_wr_en && (s_axil_awaddr == REG_OUT_CH);
-  assign cfg_channels_wdata= s_axil_wdata[O_OUT_CH_W-1:0];
-  assign repeat_cnt_wen    = axil_wr_en && (s_axil_awaddr == REG_REPEAT_CNT);
-  assign repeat_cnt_wdata  = s_axil_wdata[O_REPEAT_CNT_W-1:0];
   assign axis_bypass = axis_bypass_r;
 
   wire [AXI_OUT_WIDTH-1:0] m_axis_tdata_raw;

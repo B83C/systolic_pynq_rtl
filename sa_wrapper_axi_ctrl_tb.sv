@@ -28,16 +28,50 @@ module sa_wrapper_axi_ctrl_tb;
   logic a_bypass;
   wire  axis_bypass;
   wire  idle;
-  wire  mul_q_wen;
-  wire  [15:0] mul_q_wdata;
-  wire  shift_wen;
-  wire  [ 4:0] shift_wdata;
-  wire  zp_out_wen;
-  wire  [ 7:0] zp_out_wdata;
-  wire  cfg_channels_wen;
-  wire  [ 6:0] cfg_channels_wdata;
-  wire  repeat_cnt_wen;
-  wire  [ 4:0] repeat_cnt_wdata;
+
+  // AXI-Lite signals for the quantizer (separate slave)
+  logic        q_awvalid;
+  wire         q_awready;
+  logic [ 2:0] q_awaddr;
+  logic [31:0] q_wdata;
+  logic        q_wvalid;
+  wire         q_wready;
+  wire  [ 1:0] q_bresp;
+  wire         q_bvalid;
+  logic        q_bready;
+  logic        q_arvalid;
+  wire         q_arready;
+  logic [ 2:0] q_araddr;
+  wire  [31:0] q_rdata;
+  wire  [ 1:0] q_rresp;
+  wire         q_rvalid;
+  logic        q_rready;
+
+  // Latched copies of quantizer config (driven by quantizer's AXI-Lite)
+  logic [15:0] cur_mul_q;
+  logic [ 4:0] cur_shift;
+  logic [ 7:0] cur_zp_out;
+  // Quantizer internal register addresses (match quantizer.sv)
+  localparam REG_Q_MUL_Q  = 3'h0;
+  localparam REG_Q_SHIFT  = 3'h4;
+  localparam REG_Q_ZP_OUT = 3'h8;
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      cur_mul_q  <= 0;
+      cur_shift  <= 0;
+      cur_zp_out <= 0;
+    end else if (q_bvalid) begin
+      /* verilator lint_off CASEOVERLAP */
+      /* verilator lint_off CASEINCOMPLETE */
+      case (q_awaddr)
+        REG_Q_MUL_Q:  cur_mul_q  <= q_wdata[15:0];
+        REG_Q_SHIFT:  cur_shift  <= q_wdata[4:0];
+        REG_Q_ZP_OUT: cur_zp_out <= q_wdata[7:0];
+      endcase
+      /* verilator lint_on CASEOVERLAP */
+      /* verilator lint_on CASEINCOMPLETE */
+    end
+  end
 
   // quantizer signals
   logic [SIZE*8-1:0] q_m_axis_tdata;
@@ -55,12 +89,14 @@ module sa_wrapper_axi_ctrl_tb;
 
   quantizer #(.SIZE(SIZE), .DATA_WIDTH_IN(DWO)) u_quant (
       .clk, .rst_n,
-      .mul_q_wen   (mul_q_wen),
-      .mul_q_wdata (mul_q_wdata),
-      .shift_wen   (shift_wen),
-      .shift_wdata (shift_wdata),
-      .zp_out_wen  (zp_out_wen),
-      .zp_out_wdata(zp_out_wdata),
+      .s_axil_awvalid(q_awvalid), .s_axil_awready(q_awready),
+      .s_axil_awaddr(q_awaddr),
+      .s_axil_wdata(q_wdata), .s_axil_wvalid(q_wvalid), .s_axil_wready(q_wready),
+      .s_axil_bresp(q_bresp), .s_axil_bvalid(q_bvalid), .s_axil_bready(q_bready),
+      .s_axil_arvalid(q_arvalid), .s_axil_arready(q_arready),
+      .s_axil_araddr(q_araddr),
+      .s_axil_rdata(q_rdata), .s_axil_rresp(q_rresp),
+      .s_axil_rvalid(q_rvalid), .s_axil_rready(q_rready),
       .s_axis_tdata (m_axis_tdata),
       .s_axis_tvalid(m_axis_tvalid),
       .s_axis_tready(),
