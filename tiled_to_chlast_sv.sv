@@ -56,7 +56,18 @@ module tiled_to_chlast_sv #(
   localparam REG_TC_BYPASS = 4'h4;
   logic bypass_r;
 
-  logic [CH_PER_BEAT*DATA_WIDTH-1:0] buffer[2][OUT_COL][CH_BLOCKS];
+  // Force BRAM inference.  At default CH_PER_BEAT=8, OUT_COL=8,
+  // CH_BLOCKS=8 (1024 bits total) Vivado may choose either BRAM or
+  // LUT-RAM depending on placement pressure; forcing block RAM keeps
+  // the buffer out of the LUT fabric and guarantees dedicated output
+  // registers for the read path.  For very small buffers (CH_PER_BEAT*8
+  // * CH_BLOCKS <= 64) the user can override via
+  // `define FORCE_LUTRAM 1` in the wrapper.
+`ifndef FORCE_LUTRAM
+  (* ram_style = "block" *) logic [CH_PER_BEAT*DATA_WIDTH-1:0] buffer[2][OUT_COL][CH_BLOCKS];
+`else
+  (* ram_style = "distributed" *) logic [CH_PER_BEAT*DATA_WIDTH-1:0] buffer[2][OUT_COL][CH_BLOCKS];
+`endif
 
   // cfg_channels is the live AXI reg; cfg_channels_q is the shadow used by
   // the FSM.  cfg_ch_block_mask_q is a one-hot bit at position
@@ -89,8 +100,6 @@ module tiled_to_chlast_sv #(
 
   wire  [     SP_BITS-1:0] inner = in_cnt[SP_BITS-1:0];
   wire  [  CHBLK_BITS-1:0] ch_blk = in_cnt[$bits(in_cnt)-1:SP_BITS];
-  wire  [OUT_COL_BITS-1:0] out_col = out_col_cnt;
-  wire  [  CHBLK_BITS-1:0] out_ch = out_ch_cnt;
 
   wire                     in_last = in_cnt == cfg_channels - 1;
   wire                          out_ch_last = cfg_ch_block_mask_q[out_ch_cnt];
@@ -236,7 +245,7 @@ module tiled_to_chlast_sv #(
   // stalls on downstream back-pressure (m_axis_tready=0 with valid
   // pending) so no data is dropped.  The FSM also stalls on the same
   // condition (`out_pipe_adv_comb`).
-  wire [CH_PER_BEAT*DATA_WIDTH-1:0] tdata_pre = buffer[out_buf_sel][out_col][out_ch];
+  wire [CH_PER_BEAT*DATA_WIDTH-1:0] tdata_pre = buffer[out_buf_sel][out_col_cnt][out_ch_cnt];
   wire tvalid_pre = rst_n && state == OUT_REPLAYING;
   wire tlast_pre = out_last && output_has_tlast;
   wire out_pipe_adv_comb = !bypass_r && (!m_axis_tvalid_r || m_axis_tready);
@@ -254,9 +263,9 @@ module tiled_to_chlast_sv #(
       m_axis_tlast_r  <= tlast_pre;
     end
   end
-  assign m_axis_tdata = bypass_r ? s_axis_tdata : m_axis_tdata_r;
+  assign m_axis_tdata  = bypass_r ? s_axis_tdata  : m_axis_tdata_r;
   assign m_axis_tvalid = bypass_r ? s_axis_tvalid : m_axis_tvalid_r;
-  assign m_axis_tlast = bypass_r ? s_axis_tlast : m_axis_tlast_r;
+  assign m_axis_tlast  = bypass_r ? s_axis_tlast  : m_axis_tlast_r;
 
   assign s_axis_tready = bypass_r ? m_axis_tready :
     rst_n && (state == OUT_IDLE || !pending) && !tlast_seen;
