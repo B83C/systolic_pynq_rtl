@@ -53,7 +53,7 @@ module tiled_to_chlast_sv #(
   localparam SP_BITS = (CH_PER_BEAT > 2) ? $clog2(CH_PER_BEAT) : 1;
   localparam OUT_COL_BITS = $clog2(OUT_COL);
   localparam CFG_CH_W = $clog2(MAX_CHANNELS + 1);
-  localparam REG_TC_CH = 3'h0;
+  localparam REG_TC_CH = 4'h0;
 
   logic [CH_PER_BEAT*DATA_WIDTH-1:0] buffer[2][OUT_COL][CH_BLOCKS];
 

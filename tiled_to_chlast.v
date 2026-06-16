@@ -23,7 +23,7 @@ module tiled_to_chlast #(
     // AXI4-Lite: config (REG_CFG_CHANNELS)
     input  wire        s_axil_awvalid,
     output wire        s_axil_awready,
-    input  wire [2:0]  s_axil_awaddr,
+    input  wire [3:0]  s_axil_awaddr,
     input  wire [31:0] s_axil_wdata,
     input  wire        s_axil_wvalid,
     output wire        s_axil_wready,
@@ -33,7 +33,7 @@ module tiled_to_chlast #(
 
     input  wire        s_axil_arvalid,
     output wire        s_axil_arready,
-    input  wire [2:0]  s_axil_araddr,
+    input  wire [3:0]  s_axil_araddr,
     output wire [31:0] s_axil_rdata,
     output wire [ 1:0] s_axil_rresp,
     output wire        s_axil_rvalid,

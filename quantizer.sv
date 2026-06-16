@@ -19,7 +19,7 @@ module quantizer #(
     localparam integer  ZP_OUT_CLAMP_HI = MAX_ZP_OUT,
     localparam integer  ZP_OUT_CLAMP_LO = MIN_ZP_OUT,
     localparam integer  ZP_OUT_CLAMP_W  = MAX_ZP_OUT - MIN_ZP_OUT + 1,
-    localparam unsigned AXI_ADDR_W    = 3
+    localparam unsigned AXI_ADDR_W    = 4
 ) (
     input  logic clk,
     input  logic rst_n,
@@ -55,9 +55,9 @@ module quantizer #(
 );
 
     // AXI-Lite register offsets
-    localparam REG_Q_MUL_Q  = 3'h0;
-    localparam REG_Q_SHIFT  = 3'h4;
-    localparam REG_Q_ZP_OUT = 3'h8;
+    localparam REG_Q_MUL_Q  = 4'h0;
+    localparam REG_Q_SHIFT  = 4'h4;
+    localparam REG_Q_ZP_OUT = 4'h8;
 
     wire signed [ACCUM_WIDTH-1:0] acc[SIZE];
     generate

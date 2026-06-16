@@ -32,7 +32,7 @@ module sa_wrapper_axi_ctrl_tb;
   // AXI-Lite signals for the quantizer (separate slave)
   logic        q_awvalid;
   wire         q_awready;
-  logic [ 2:0] q_awaddr;
+  logic [ 3:0] q_awaddr;
   logic [31:0] q_wdata;
   logic        q_wvalid;
   wire         q_wready;
@@ -41,7 +41,7 @@ module sa_wrapper_axi_ctrl_tb;
   logic        q_bready;
   logic        q_arvalid;
   wire         q_arready;
-  logic [ 2:0] q_araddr;
+  logic [ 3:0] q_araddr;
   wire  [31:0] q_rdata;
   wire  [ 1:0] q_rresp;
   wire         q_rvalid;
@@ -52,9 +52,9 @@ module sa_wrapper_axi_ctrl_tb;
   logic [ 4:0] cur_shift;
   logic [ 7:0] cur_zp_out;
   // Quantizer internal register addresses (match quantizer.sv)
-  localparam REG_Q_MUL_Q  = 3'h0;
-  localparam REG_Q_SHIFT  = 3'h4;
-  localparam REG_Q_ZP_OUT = 3'h8;
+  localparam REG_Q_MUL_Q  = 4'h0;
+  localparam REG_Q_SHIFT  = 4'h4;
+  localparam REG_Q_ZP_OUT = 4'h8;
   always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
       cur_mul_q  <= 0;

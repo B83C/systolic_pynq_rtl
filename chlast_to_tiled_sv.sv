@@ -59,8 +59,8 @@ module chlast_to_tiled_sv #(
   localparam OUT_COL_BITS = $clog2(OUT_COL);
   localparam CFG_CH_W     = $clog2(MAX_CHANNELS + 1);
   localparam REPLAY_CNT_W = $clog2(MAX_REPLAY_CNT + 1);
-  localparam REG_CT_CH  = 3'h0;
-  localparam REG_CT_RPT = 3'h4;
+  localparam REG_CT_CH  = 4'h0;
+  localparam REG_CT_RPT = 4'h4;
 
   logic [CH_PER_BEAT*DATA_WIDTH-1:0] buffer[2][OUT_COL][CH_BLOCKS];
 

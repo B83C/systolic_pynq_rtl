@@ -69,7 +69,7 @@ task axil_write(input [5:0] addr, input [31:0] data);
   s_axil_bready = 0;
 endtask
 
-task qaxil_write(input [2:0] addr, input [31:0] data);
+task qaxil_write(input [3:0] addr, input [31:0] data);
   @(posedge clk);
   q_awvalid = 1;
   q_awaddr  = addr;
