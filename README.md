@@ -57,25 +57,86 @@ Tests 1-13 cover: single multiply, back-to-back, accumulation, eye, consecutive 
 
 ## PYNQ driver
 
+**Note: `systolic.py`'s `compute()` / `compute_acc()` methods are currently broken**
+(duplicate `_dma_send`/`_dma_recv` override + `self.dma` uninitialized).
+Use the low-level MMIO+DMA flow in `test_systolic_driver.ipynb` instead.
+
+### Sourcing the environment
+
+When running scripts via SSH (outside Jupyter), source these files first:
+
+```sh
+source /etc/profile.d/pynq_venv.sh
+source /etc/profile.d/xrt_setup.sh
+```
+
+Then run with sudo:
+```sh
+echo xilinx | sudo -S python3 your_script.py
+```
+
+Or as a one-liner:
+```sh
+ssh pynq 'cd /path/to/scripts && echo xilinx | sudo -S bash -c \
+  "source /etc/profile.d/pynq_venv.sh && source /etc/profile.d/xrt_setup.sh && python3 bench_sa.py"'
+```
+
+### Low-level usage (MMIO + DMA — works)
+
 ```python
-from systolic import SystolicArray
+from pynq import Overlay, allocate, MMIO
 import numpy as np
 
-sa = SystolicArray('systolic.bit', ctrl_base_addr=0x40000000, size=8)
+ol = Overlay("systolic.bit"); ol.download()
+dma = ol.axi_dma_0
 
-A = np.array([...], dtype=np.uint8)   # (N, SIZE)
-B = np.array([...], dtype=np.uint8)   # (N, SIZE)
-C = np.array([100, 200, 300, 400], dtype=np.uint32)  # optional
-
-# Simple compute
-result = sa.compute(A, B)
-
-# With C matrix
-result = sa.compute(A, B, C=C)
-
-# Accumulation (multiple B against one A)
-result = sa.compute_acc(A, [B1, B2, B3], fb_cnt=2)
+ip_base = ol.ip_dict['sa_wrapper_axi_ctrl_0']['phys_addr']
+mmio = MMIO(ip_base, 0x1000)
+mmio_ch_t = MMIO(ol.ip_dict['chlast_to_tiled_gath_0']['phys_addr'], 0x1000)
+mmio_quant = MMIO(ol.ip_dict['quantizer_wrapper_0']['phys_addr'], 0x1000)
+mmio_t_ch = MMIO(ol.ip_dict['tiled_to_chlast_gath_0']['phys_addr'], 0x1000)
 ```
+
+See `test_systolic_driver.ipynb` for the full data movement flow (block-major A,
+channel-last B, quantizer configuration).
+
+## Benchmark
+
+Files on the PYNQ board (`~/jupyter_notebooks/test_systolic_vivado_manual/`):
+
+| File | What |
+|------|------|
+| `bench_sa.py` | SA vs numpy throughput (Ci,Co ≤ 64, N arbitrary, all sizes pass correctness) |
+| `dma_bench` | C++ binary — raw DMA latency via `/dev/mem` register access |
+| `run_dma_bench.py` | Python wrapper comparing C++ vs Python DMA timing |
+
+### Python benchmark (SA vs numpy)
+
+```sh
+ssh pynq 'cd /home/xilinx/jupyter_notebooks/test_systolic_vivado_manual && \
+  echo xilinx | sudo -S bash -c "source /etc/profile.d/pynq_venv.sh && \
+  source /etc/profile.d/xrt_setup.sh && python3 bench_sa.py"'
+```
+
+### C++ DMA latency
+
+```sh
+ssh pynq 'cd /home/xilinx/jupyter_notebooks/test_systolic_vivado_manual && \
+  echo xilinx | sudo -S bash -c "source /etc/profile.d/pynq_venv.sh && \
+  source /etc/profile.d/xrt_setup.sh && python3 run_dma_bench.py"'
+```
+
+### Results summary
+
+| Co | Ci | N | SA vs numpy | Bandwidth |
+|----|----|---|-------------|-----------|
+| 64 | 64 | 1024 | **77× faster** | ~200 MB/s |
+| 64 | 64 | 512 | **35× faster** | ~200 MB/s |
+| 64 | 64 | 256 | **19× faster** | ~200 MB/s |
+| 64 | 64 | 128 | **10× faster** | ~200 MB/s |
+| 64 | 64 | 64 | **5.7× faster** | ~200 MB/s |
+
+SA throughput is **~0.4 GOPS** (Python) / **~200 MB/s** DMA-limited. C++ direct register access eliminates Python's ~500 µs fixed overhead, yielding up to **166× improvement for small matrices** (N=64). For large streaming workloads (N≥4096), C++ gains are ~10% since bandwidth dominates.
 
 ## Deployment (g7-station → PYNQ)
 
